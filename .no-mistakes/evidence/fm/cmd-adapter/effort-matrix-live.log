@@ -1,0 +1,10 @@
+request deepseek/deepseek-v4.1-flash:low       spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash' --effort 'low'         -> worker wrote ok.txt
+request deepseek/deepseek-v4.1-flash:medium    spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash' (no --effort flag)     -> worker wrote ok.txt
+request deepseek/deepseek-v4.1-flash:high      spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash' --effort 'high'        -> worker wrote ok.txt
+request deepseek/deepseek-v4.1-flash:xhigh     spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash' (no --effort flag)     -> worker wrote ok.txt
+request deepseek/deepseek-v4.1-flash:max       spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash' --effort 'max'         -> worker wrote ok.txt
+request deepseek/deepseek-v4.1-flash-fast:low  spawn_rc=0 --model 'deepseek/deepseek-v4.1-flash-fast' (no --effort flag)     -> worker wrote ok.txt
+vendor direct: commandcode --model deepseek/deepseek-v4.1-flash --effort medium -> Unknown effort "medium". Supported: off, low, high, max. 
+ (exit 1)
+vendor direct: commandcode --model deepseek/deepseek-v4.1-flash --effort xhigh -> Unknown effort "xhigh". Supported: off, low, high, max. 
+ (exit 1)

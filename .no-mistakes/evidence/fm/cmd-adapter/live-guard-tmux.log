@@ -1,0 +1,14 @@
+FM_TEST_BEGIN 2026-10-06T03:02:42Z tests/fm-commandcode-signals-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+ok - commandcode 1.74.1: spawn brief, model, effort, autonomy, trust, identity, and the busy mod
+ok - commandcode 1.74.1: the worker commit carries no attribution
+ok - commandcode 1.74.1: idle composer reads empty; real fm-send doorbell read and acknowledged
+ok - commandcode 1.74.1: idle interrupt opens nothing; an open rewind picker blocks exit and is closed without restoring
+ok - commandcode 1.74.1: one Escape cancels, preserves the agent, and the mod records idle
+ok - commandcode 1.74.1: fm-control exit via /quit
+ok - commandcode 1.74.1: native --resume <session-id>
+ok - commandcode 1.74.1: fm-control relaunch re-arms the mod with a fresh generation
+FM_TEST_END 2026-10-06T03:06:24Z tests/fm-commandcode-signals-live-e2e.test.sh exit=0 duration_ms=222167 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=222207
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=222167 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-commandcode-signals-live-e2e.test.sh duration_ms=222167
+exit=0 elapsed=222s

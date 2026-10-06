@@ -1,0 +1,15 @@
+# session fm-lab-ccverify-3345620-26708, herdr herdr 0.9.3
+# workspace=w1 tab=w1:t1 pane=w1:p1
+# agent get: {"agent":"cmd","status":"idle"}
+# fm_backend_agent_state: alive
+# fm_backend_composer_state: empty
+ok - herdr: spawn-generated launch ran the brief on deepseek/deepseek-v4.1-flash; mod records 'idle commandcode-mod'; composer empty
+ok - herdr: fm-send steer delivered (1147) and inbox acknowledged
+# interrupt: interrupt-delivered cc-herdr harness=commandcode backend=herdr verified=agent-alive cancel=unconfirmed
+ok - herdr: fm-control interrupt cancelled the busy turn with one Escape; agent alive; mod records idle
+# exit: stopped cc-herdr harness=commandcode backend=herdr endpoint=fm-lab-ccverify-3345620-26708:w1:p1 worktree=/tmp/cch.xN7evD/wt
+ok - herdr: fm-control exit via /quit; agent state dead
+# relaunch: relaunched cc-herdr harness=commandcode from=commandcode model=deepseek/deepseek-v4.1-flash effort=low backend=herdr endpoint=fm-lab-ccverify-3345620-26708:w1:p1 worktree=/tmp/cch.xN7evD/wt
+ok - herdr: fm-control relaunch ran the note (91) and re-armed the mod on a fresh generation
+ok - herdr: relaunched agent exited cleanly
+# teardown of fm-lab-ccverify-3345620-26708 rc=0

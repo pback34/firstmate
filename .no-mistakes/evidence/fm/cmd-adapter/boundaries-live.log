@@ -1,0 +1,21 @@
+== 1. fm-spawn.sh --secondmate with harness commandcode ==
+error: commandcode is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates.
+exit=1  launch command written: no
+
+== 2. fm-bootstrap.sh validating config/crew-dispatch.json ==
+rules: {"rules":[{"when":"small, clear task or a second-opinion read","use":{"harness":"commandcode","model":"deepseek/deepseek-v4.1-flash","effort":"low"}}]}
+    -> BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+  BOOTSTRAP_INFO: crew dispatch rule: small, clear task or a second-opinion read -> commandcode/deepseek/deepseek-v4.1-flash/low
+rules: {"rules":[{"when":"small task","use":{"harness":"cmd","model":"deepseek/deepseek-v4.1-flash"}}]}
+    -> CREW_DISPATCH: invalid config/crew-dispatch.json - unverified harness: cmd
+
+== 3. commit-msg strip of the Command Code co-author trailer ==
+-- before:
+Add answer
+
+Co-authored-by: CommandCodeBot <noreply@commandcode.ai>
+Co-authored-by: Jane Human <jane@example.com>
+-- after (exit 0):
+Add answer
+
+Co-authored-by: Jane Human <jane@example.com>
