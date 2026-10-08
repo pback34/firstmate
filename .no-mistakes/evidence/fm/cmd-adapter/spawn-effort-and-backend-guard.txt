@@ -1,0 +1,19 @@
+### effort routing (generated launch command, model/effort flags only)
+deepseek/deepseek-v4.1-flash low         -> --model 'deepseek/deepseek-v4.1-flash' --effort 'low'   (meta: effort=low)
+deepseek/deepseek-v4.1-flash high        -> --model 'deepseek/deepseek-v4.1-flash' --effort 'high'   (meta: effort=high)
+deepseek/deepseek-v4.1-flash max         -> --model 'deepseek/deepseek-v4.1-flash' --effort 'max'   (meta: effort=max)
+deepseek/deepseek-v4.1-flash xhigh       -> --model 'deepseek/deepseek-v4.1-flash'   (meta: effort=xhigh)
+deepseek/deepseek-v4.1-flash-fast low    -> --model 'deepseek/deepseek-v4.1-flash-fast'   (meta: effort=low)
+deepseek/deepseek-v4.1-flash-fast max    -> --model 'deepseek/deepseek-v4.1-flash-fast'   (meta: effort=max)
+
+### backend guard (commandcode refused off tmux/herdr, nothing provisioned)
+backend=zellij rc=1 launched=no task_record=no busy_armed=no
+  error: commandcode is verified on the tmux and herdr backends only; backend=zellij cannot prove its composer empty. Select backend tmux or herdr.
+backend=cmux rc=1 launched=no task_record=no busy_armed=no
+  error: commandcode is verified on the tmux and herdr backends only; backend=cmux cannot prove its composer empty. Select backend tmux or herdr.
+backend=orca rc=1 launched=no task_record=no busy_armed=no
+  error: commandcode is verified on the tmux and herdr backends only; backend=orca cannot prove its composer empty. Select backend tmux or herdr.
+
+### secondmate refusal
+error: commandcode is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates.
+rc=1

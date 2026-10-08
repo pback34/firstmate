@@ -1,0 +1,8 @@
+### config/crew-dispatch.json routing small clear tasks to commandcode + deepseek/deepseek-v4.1-flash
+{"rules":[{"when":"small, clear task or second-opinion read","use":{"harness":"commandcode","model":"deepseek/deepseek-v4.1-flash","effort":"low"}}]}
+--- fm-bootstrap.sh CREW_DISPATCH / dispatch lines:
+
+### adversarial: misspelled harness "command-code" in the same rule
+{"rules":[{"when":"small, clear task","use":{"harness":"command-code","model":"deepseek/deepseek-v4.1-flash"}}]}
+--- fm-bootstrap.sh CREW_DISPATCH / dispatch lines:
+CREW_DISPATCH: invalid config/crew-dispatch.json - unverified harness: command-code

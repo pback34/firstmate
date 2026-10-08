@@ -1,0 +1,16 @@
+lab session: fm-lab-cc-gate-2067209-22017
+herdr pane get: {"agent":"cmd","status":"idle"}
+fm_backend_agent_state: alive
+fm_backend_composer_state: empty
+ok - commandcode 1.77.0: herdr: real fm-spawn launch ran the brief on deepseek-v4.1-flash; agent alive; idle composer reads empty; mod idle
+ok - commandcode 1.77.0: herdr: fm-send steer delivered, executed (1147), and inbox acknowledged
+  interrupt: interrupt-delivered cc-herdr harness=commandcode backend=herdr verified=agent-alive cancel=unconfirmed
+ok - commandcode 1.77.0: herdr: busy turn interrupted with one Escape; agent alive; mod records idle
+  exit: stopped cc-herdr harness=commandcode backend=herdr endpoint=fm-lab-cc-gate-2067209-22017:w1:p2 worktree=/tmp/cch.ApXmAx/wt
+ok - commandcode 1.77.0: herdr: fm-control exit via /quit; agent state dead
+  relaunch: relaunched cc-herdr harness=commandcode from=commandcode model=deepseek/deepseek-v4.1-flash effort=low backend=herdr endpoint=fm-lab-cc-gate-2067209-22017:w1:p2 worktree=/tmp/cch.ApXmAx/wt
+busy generation: before= after=g1791419367.2081430.28538
+ok - commandcode 1.77.0: herdr: fm-control relaunch ran the note (91) and re-armed the mod on a fresh generation
+all herdr scenarios passed
+teardown: lab session fm-lab-cc-gate-2067209-22017 removed; fleet tripwire verified
+exit=0 elapsed=190s

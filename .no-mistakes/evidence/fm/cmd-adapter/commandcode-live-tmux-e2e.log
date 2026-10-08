@@ -1,0 +1,9 @@
+ok - commandcode 1.77.0: spawn brief, model, effort, autonomy, trust, identity, and the busy mod
+ok - commandcode 1.77.0: the worker commit carries no attribution
+ok - commandcode 1.77.0: idle composer reads empty; real fm-send doorbell read and acknowledged
+ok - commandcode 1.77.0: idle interrupt opens nothing; an open rewind picker blocks exit and is closed without restoring
+ok - commandcode 1.77.0: one Escape cancels, preserves the agent, and the mod records idle
+ok - commandcode 1.77.0: fm-control exit via /quit
+ok - commandcode 1.77.0: native --resume <session-id>
+ok - commandcode 1.77.0: fm-control relaunch re-arms the mod with a fresh generation
+exit=0 elapsed=320s
