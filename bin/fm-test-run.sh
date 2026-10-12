@@ -301,6 +301,7 @@ family_for_basename() {
     fm-send-popup-settle.test.sh|fm-send-settle.test.sh|\
     fm-subagent-pretool-check.test.sh|\
     fm-supervision-instructions.test.sh|fm-task-delivery.test.sh|\
+    fm-spec-e2e.test.sh|\
     fm-timeout-lib.test.sh|\
     fm-tmux-submit-busy.test.sh|fm-trace-context-lib.test.sh|\
     fm-transition-lib.test.sh|\
@@ -866,6 +867,7 @@ tests/fm-supervision-host-live-e2e.test.sh 75
 tests/fm-supervision-host.test.sh 789123
 tests/fm-tangle-guard.test.sh 8501
 tests/fm-task-delivery.test.sh 32789
+tests/fm-spec-e2e.test.sh 336
 tests/fm-task-inbox.test.sh 31965
 tests/fm-tasks-axi.test.sh 2293
 tests/fm-teardown-endpoint-safety.test.sh 40851
