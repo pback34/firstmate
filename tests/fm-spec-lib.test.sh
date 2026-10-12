@@ -273,6 +273,16 @@ EOF
   pass "archive check and contract text"
 }
 
+# The worker runs the acceptance command as rendered, so a home path with a space
+# must reach the shell as one word.
+test_contract_quotes_a_home_path_with_a_space() {
+  local lock out
+  lock="$TMP_ROOT/quoting/spec-lock.json"
+  out=$(fm_spec_ship_contract t10 "$lock" bin/acceptance /fm "/home/x/my home")
+  assert_contains "$out" 'FM_HOME=/home/x/my\ home /fm/bin/fm-acceptance.sh run t10' "home path with a space is rendered as one shell word"
+  pass "the worker contract quotes a home path with a space"
+}
+
 test_archive_refuses_a_deleted_archived_file() {
   local lock wt out
   read -r lock wt <<EOF
@@ -315,6 +325,7 @@ test_gate_accepts_a_fully_passing_run
 test_gate_refusals
 test_gate_matches_outline_rows_by_ordinal_and_catches_short_steps
 test_archive_check_and_contract
+test_contract_quotes_a_home_path_with_a_space
 test_archive_refuses_a_deleted_archived_file
 test_malformed_locks_are_refused
 echo "all fm-spec-lib tests passed"

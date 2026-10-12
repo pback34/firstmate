@@ -629,8 +629,20 @@ test_locked_done_passes_with_a_passing_record() {
   pass "a locked done passes with a passing record"
 }
 
+test_present_but_empty_spec_lock_is_refused() {
+  local reason
+  spec_locked_task lock4
+  passing_record
+  fm_write_meta "$META" "kind=ship" "mode=direct-PR" "worktree=$WT" "spec_lock="
+  reason=$(accept_done ship direct-PR "$WT" "$REPO" 'done: PR https://github.com/o/r/pull/5' "$STATE_DIR" lock4 "$META") \
+    && fail "a present-but-empty spec_lock= must refuse, not skip the gate"
+  assert_equals "spec lock unreadable" "$reason" "empty spec_lock= reason"
+  pass "a present-but-empty spec_lock= is refused"
+}
+
 test_locked_done_is_refused_on_every_acceptance_path
 test_locked_pre_validation_done_stays_ungated
 test_locked_done_passes_with_a_passing_record
+test_present_but_empty_spec_lock_is_refused
 
 echo "all fm-dod-lib tests passed"

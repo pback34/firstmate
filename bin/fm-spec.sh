@@ -108,14 +108,22 @@ approve() {  # <id> <args...>
   META_LOCK=$(fm_meta_lock_path "$meta") || die "invalid task record path $meta"
   fm_lock_acquire_wait "$META_LOCK"
   META_LOCK_HELD=1
-  if [ -e "$dir/spec-lock.json" ]; then
+  # An interrupted earlier approve can leave spec/ with no lock; archive it too, or
+  # the staged spec would nest inside it.
+  if [ -e "$dir/spec-lock.json" ] || [ -e "$dir/spec" ] || [ -e "$dir/acceptance.json" ]; then
     n=1
-    while [ -e "$dir/spec-lock.$n.json" ]; do n=$((n + 1)); done
-    mv -- "$dir/spec-lock.json" "$dir/spec-lock.$n.json"
-    [ ! -d "$dir/spec" ] || mv -- "$dir/spec" "$dir/spec.$n"
-    [ ! -e "$dir/acceptance.json" ] || mv -- "$dir/acceptance.json" "$dir/acceptance.$n.json"
+    while [ -e "$dir/spec-lock.$n.json" ] || [ -e "$dir/spec.$n" ] || [ -e "$dir/acceptance.$n.json" ]; do n=$((n + 1)); done
+    if [ -e "$dir/spec-lock.json" ]; then
+      mv -- "$dir/spec-lock.json" "$dir/spec-lock.$n.json" || die "could not move the previous lock to $dir/spec-lock.$n.json"
+    fi
+    if [ -e "$dir/spec" ]; then
+      mv -- "$dir/spec" "$dir/spec.$n" || die "could not move the previous spec to $dir/spec.$n"
+    fi
+    if [ -e "$dir/acceptance.json" ]; then
+      mv -- "$dir/acceptance.json" "$dir/acceptance.$n.json" || die "could not move the previous acceptance record to $dir/acceptance.$n.json"
+    fi
   fi
-  mv -- "$STAGE" "$dir/spec"
+  mv -- "$STAGE" "$dir/spec" || die "could not move the staged spec into $dir/spec"
   STAGE=
   if ! { printf '%s\n' "$lock_json" > "$dir/spec-lock.json.tmp" \
     && mv -- "$dir/spec-lock.json.tmp" "$dir/spec-lock.json"; }; then

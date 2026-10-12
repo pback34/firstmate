@@ -9,7 +9,8 @@
 # where it must write a Cucumber JSON report, and writes data/<id>/acceptance.json
 # bound to the worktree HEAD (format owned by bin/fm-spec-lib.sh).
 # Refuses, writing no record, on: a dirty worktree, a missing or non-executable
-# entrypoint, a HEAD that moves during the run, or no readable report.
+# entrypoint, a HEAD that moves or a tracked file that changes during the run, or
+# no readable report.
 # Exit: 0 recorded and passing; 1 recorded but not passing; 2 refused.
 set -u
 
@@ -44,12 +45,16 @@ rm -f -- "$REPORT"
 EXIT=$?
 HEAD_AFTER=$(git -C "$WT" rev-parse --verify HEAD 2>/dev/null)
 [ "$HEAD_AFTER" = "$HEAD_BEFORE" ] || refuse "HEAD moved during the acceptance run ($HEAD_BEFORE -> ${HEAD_AFTER:-none}); no record written"
+[ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] \
+  || refuse "the acceptance run changed tracked files in $WT; no record written"
 jq -e 'type == "array"' "$REPORT" >/dev/null 2>&1 \
   || refuse "the entrypoint (exit $EXIT) wrote no readable Cucumber JSON to $REPORT; no record written"
 fm_spec_record_from_cucumber "$REPORT" "$WT" "$HEAD_BEFORE" "$EP" "$EXIT" "$(date +%s)" > "$TMP" \
   || refuse "could not build the acceptance record"
-mv -f -- "$TMP" "$OUT"
+PASSED=0
+jq -e '.exit == 0 and (.scenarios | length) > 0 and .counts.passed == (.scenarios | length)' "$TMP" >/dev/null && PASSED=1
+mv -f -- "$TMP" "$OUT" || refuse "could not write $OUT"
 jq -r '"recorded \(.scenarios | length) scenarios at \(.head) exit=\(.exit): "
   + ([.counts | to_entries[] | select(.value > 0) | "\(.key)=\(.value)"] | join(" "))' "$OUT"
-jq -e '.exit == 0 and (.scenarios | length) > 0 and .counts.passed == (.scenarios | length)' "$OUT" >/dev/null && exit 0
+[ "$PASSED" = 1 ] && exit 0
 exit 1

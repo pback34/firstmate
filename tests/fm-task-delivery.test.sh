@@ -489,10 +489,11 @@ make_locked_spec_scout() {  # <home> <id>
 }
 
 test_promotion_appends_the_locked_spec_contract() {
-  local home data id out
+  local home data id meta out
   home="$TMP_ROOT/promote-spec-locked/home"
   data="$home/data"
   id=promote-spec-locked
+  meta="$home/state/$id.meta"
   make_locked_spec_scout "$home" "$id"
   out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1) \
     || fail "promotion with a locked spec should succeed (got: $out)"
@@ -500,7 +501,40 @@ test_promotion_appends_the_locked_spec_contract() {
   assert_grep "# Locked acceptance spec" "$data/$id/brief.md" "relaunch brief carries the contract"
   assert_grep "fm-acceptance.sh run $id" "$data/$id/ship-instructions.md" "acceptance command"
   assert_grep "through \`bin/acceptance\`" "$data/$id/ship-instructions.md" "contract names the brief's entrypoint"
+  assert_grep "spec_lock=$data/$id/spec-lock.json" "$meta" "promotion dropped the meta's spec lock"
+  assert_grep "Acceptance entrypoint: bin/acceptance" "$data/$id/brief.md" "promotion dropped the brief's acceptance entrypoint"
   pass "promotion appends the locked-spec contract"
+}
+
+# A spec scout whose brief names an acceptance entrypoint but whose meta carries no
+# approved spec_lock= (no approval ever wrote one, or it was emptied) must not
+# promote into an ungated ship.
+test_promotion_refuses_an_unapproved_spec_scout() {
+  local home data id meta err code expected variant
+  for variant in absent empty; do
+    home="$TMP_ROOT/promote-spec-unapproved-$variant/home"
+    data="$home/data"
+    id="promote-spec-unapproved-$variant"
+    meta="$home/state/$id.meta"
+    expected="error: cannot promote $id: spec scout not approved; run bin/fm-spec.sh approve $id --decision-file <captain words>"
+    make_locked_spec_scout "$home" "$id"
+    if [ "$variant" = empty ]; then
+      printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nspec_lock=\n' "$id" > "$meta"
+    else
+      printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+    fi
+    code=0
+    # The supervision guard prints its own banner to stderr on every promotion,
+    # so the refusal must be one exact stderr line rather than the whole stream.
+    err=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1 >/dev/null) || code=$?
+    expect_code 1 "$code" "an unapproved spec scout ($variant spec_lock) is refused"
+    printf '%s\n' "$err" | grep -Fx -- "$expected" >/dev/null \
+      || fail "unapproved spec scout ($variant spec_lock) refusal line missing from stderr: $err"
+    assert_grep "kind=scout" "$meta" "meta unchanged on refusal ($variant spec_lock)"
+    assert_absent "$data/$id/ship-instructions.md" "a refused promotion rendered ship instructions ($variant spec_lock)"
+    assert_grep "Acceptance entrypoint: bin/acceptance" "$data/$id/brief.md" "a refused promotion changed the brief ($variant spec_lock)"
+  done
+  pass "promotion refuses an unapproved spec scout"
 }
 
 test_promotion_refuses_a_tampered_archive() {
@@ -1860,6 +1894,7 @@ test_promote_requires_and_records_the_delivery_contract
 test_promote_refuses_a_symlinked_task_record
 test_promotion_delivers_the_real_definition_of_done
 test_promotion_appends_the_locked_spec_contract
+test_promotion_refuses_an_unapproved_spec_scout
 test_promotion_refuses_a_tampered_archive
 test_promotion_persists_the_selected_ship_branch
 test_promotion_branch_command_is_shell_safe

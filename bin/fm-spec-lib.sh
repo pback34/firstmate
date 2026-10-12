@@ -230,7 +230,9 @@ fm_spec_archive_matches_lock() {  # <lock>
 }
 
 fm_spec_ship_contract() {  # <task-id> <lock> <entrypoint> <fm-root> <fm-home>
-  local id=$1 lock=$2 ep=$3 root=$4 home=$5 dir=${2%/*}
+  local id=$1 lock=$2 ep=$3 root=$4 home=$5 dir=${2%/*} qhome qroot
+  qhome=$(printf %q "$home")
+  qroot=$(printf %q "$root")
   cat <<EOF
 # Locked acceptance spec
 Spec lock: $lock
@@ -238,7 +240,7 @@ The captain approved the scenarios archived in \`$dir/spec/features/\`; they are
 1. Before implementing, restore them into this branch unchanged with \`mkdir -p features && cp -R "$dir/spec/features/." features/\`, and commit them as your branch's first commit.
 2. Never edit, rename, delete, tag-filter, or skip a locked feature file or scenario. If a scenario looks wrong or impossible, stop and escalate to firstmate; only the captain can change the spec.
 3. Implement test-first and make every locked scenario executable through \`$ep\`: run from the worktree root with one argument, an absolute path, it must write a Cucumber JSON report there and exit 0 only when everything passed. Create it if the project lacks it.
-4. As your LAST step, run \`FM_HOME=$home $root/bin/fm-acceptance.sh run $id\`: after implementation, after any no-mistakes pipeline fixes are in this copy (and after Gerrit custody recovery where it applies), on the exact head your ready report names, with no commits afterwards.
+4. As your LAST step, run \`FM_HOME=$qhome $qroot/bin/fm-acceptance.sh run $id\`: after implementation, after any no-mistakes pipeline fixes are in this copy (and after Gerrit custody recovery where it applies), on the exact head your ready report names, with no commits afterwards.
 5. Your ready \`done:\` is refused until the locked files are unchanged at that head and the recorded run shows exit 0 with every scenario passed. If it is refused, rerun step 4; re-implement only when the refusal names failing scenarios.
 EOF
 }

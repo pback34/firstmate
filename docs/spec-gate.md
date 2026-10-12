@@ -80,3 +80,5 @@ The [presentation spaces](herdr-backend.md#presentation-spaces) section owns tha
 - Scenarios outside the locked files are allowed, but they must also pass.
 - Runners that cannot emit Cucumber JSON are unsupported until a converter exists.
 - The gate needs `jq` and either `sha256sum` or `shasum`.
+- For a no-mistakes ship the gate attests the worker copy's HEAD, not the head the pipeline pushed.
+  The contract tells the worker to bring pipeline fixes into the copy before the final acceptance run, but nothing compares the two.
