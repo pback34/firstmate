@@ -159,11 +159,17 @@ fm_spec_gate_scenarios() {  # <lock> <record>
   '
 }
 
+# 0 only when <lock> is readable and holds the version-1 shape with at least one
+# locked file and one scenario; the gate and the archive check both use it.
+fm_spec_lock_valid() {  # <lock>
+  [ -r "$1" ] && jq -e '.version == 1 and (.files | type == "array") and (.files | length) > 0 and (.scenarios | type == "array") and (.scenarios | length) > 0' "$1" >/dev/null 2>&1
+}
+
 # 0 when the locked spec passes at <worktree>'s HEAD; otherwise one reason line
 # on stdout and 1. The checks run in the order the design's gate table lists.
 fm_spec_gate() {  # <lock> <worktree>
   local lock=$1 wt=$2 head rec rhead ex out notrun bad changed
-  if [ ! -r "$lock" ] || ! jq -e '.version == 1 and (.files | type == "array") and (.scenarios | type == "array")' "$lock" >/dev/null 2>&1; then
+  if ! fm_spec_lock_valid "$lock"; then
     printf '%s\n' "spec lock unreadable"
     return 1
   fi
@@ -210,12 +216,13 @@ fm_spec_gate() {  # <lock> <worktree>
 }
 
 fm_spec_archive_matches_lock() {  # <lock>
-  local lock=$1 bad
-  if [ ! -r "$lock" ] || ! jq -e '.version == 1' "$lock" >/dev/null 2>&1; then
+  local lock=$1 listing bad
+  if ! fm_spec_lock_valid "$lock"; then
     printf '%s\n' "spec lock unreadable"
     return 1
   fi
-  bad=$(jq -r '.files[] | "\(.sha256) \(.path)"' "$lock" | while IFS=' ' read -r want path; do
+  listing=$(jq -r '.files[] | "\(.sha256) \(.path)"' "$lock") || { printf '%s\n' "spec lock unreadable"; return 1; }
+  bad=$(printf '%s\n' "$listing" | while IFS=' ' read -r want path; do
     f="${lock%/*}/spec/$path"
     if [ ! -f "$f" ] || [ "$(fm_spec_sha256 < "$f")" != "$want" ]; then printf '%s\n' "$path"; fi
   done | paste -sd' ' -)

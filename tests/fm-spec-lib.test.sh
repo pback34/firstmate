@@ -273,6 +273,34 @@ EOF
   pass "archive check and contract text"
 }
 
+test_archive_refuses_a_deleted_archived_file() {
+  local lock wt out
+  read -r lock wt <<EOF
+$(locked_copy deleted)
+EOF
+  rm "${lock%/*}/spec/features/with space/demo.feature"
+  out=$(fm_spec_archive_matches_lock "$lock") && fail "a deleted archived file must not match"
+  assert_equals "archived spec does not match the lock: features/with space/demo.feature" "$out" "names the deleted file"
+  pass "archive check refuses a deleted archived file"
+}
+
+test_malformed_locks_are_refused() {
+  local lock wt dir out
+  read -r lock wt <<EOF
+$(locked_copy malformed)
+EOF
+  dir=${lock%/*}
+  write_record "$lock" "$wt" '.scenarios |= map(.status = "passed")'
+  printf '{"version":1}\n' > "$dir/bare-lock.json"
+  out=$(fm_spec_archive_matches_lock "$dir/bare-lock.json") && fail "a lock without files must not match its archive"
+  assert_equals "spec lock unreadable" "$out" "archive check refuses a lock without files"
+  jq -c '.files = []' "$lock" > "$dir/empty-files-lock.json"
+  out=$(fm_spec_archive_matches_lock "$dir/empty-files-lock.json") && fail "an empty files list must not match its archive"
+  assert_equals "spec lock unreadable" "$out" "archive check refuses an empty files list"
+  assert_equals "spec lock unreadable" "$(gate_reason "$dir/empty-files-lock.json" "$wt")" "gate refuses an empty files list even with a passing record"
+  pass "malformed locks are refused"
+}
+
 test_parser_matches_the_probe_feature
 test_parser_ignores_docstrings_comments_tags_and_step_tables
 test_parser_treats_crlf_like_lf
@@ -287,4 +315,6 @@ test_gate_accepts_a_fully_passing_run
 test_gate_refusals
 test_gate_matches_outline_rows_by_ordinal_and_catches_short_steps
 test_archive_check_and_contract
+test_archive_refuses_a_deleted_archived_file
+test_malformed_locks_are_refused
 echo "all fm-spec-lib tests passed"
