@@ -77,11 +77,42 @@ fm_spec_inventory() {  # <root>
 }
 
 fm_spec_build_lock() {  # <root> <task> <commit> <approval> <approved-at>
-  local root=$1 files scen
+  # Fails closed: prints no lock unless every feature entry under <root>/features
+  # is a readable regular file, hashes, and yields at least one scenario.
+  local root=$1 found p sha line rows='' files scen n
+  if [ ! -d "$root/features" ]; then
+    printf 'error: no features/ directory under %s\n' "$root" >&2
+    return 1
+  fi
+  found=$(cd "$root" && find features -name '*.feature') || {
+    printf 'error: cannot list features under %s\n' "$root" >&2
+    return 1
+  }
+  if [ -z "$found" ]; then
+    printf 'error: no feature scenarios under %s/features\n' "$root" >&2
+    return 1
+  fi
+  # A symlink is refused too: the inventory reads only regular files (-type f),
+  # so a symlinked feature would be hashed but contribute no scenarios.
+  while IFS= read -r p; do
+    if [ -L "$root/$p" ] || [ ! -f "$root/$p" ] || [ ! -r "$root/$p" ]; then
+      printf 'error: cannot hash %s\n' "$p" >&2
+      return 1
+    fi
+    sha=$(fm_spec_sha256 < "$root/$p") && [ -n "$sha" ] || {
+      printf 'error: cannot hash %s\n' "$p" >&2
+      return 1
+    }
+    printf -v line '%s\t%s\n' "$p" "$sha"
+    rows=$rows$line
+  done < <(printf '%s\n' "$found" | LC_ALL=C sort)
+  files=$(printf '%s' "$rows" | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t") | {path: .[0], sha256: .[1]}]') || return 1
   scen=$(fm_spec_inventory "$root") || return 1
-  files=$( (cd "$root" && find features -type f -name '*.feature' | LC_ALL=C sort) \
-    | while IFS= read -r p; do printf '%s\t%s\n' "$p" "$(fm_spec_sha256 < "$root/$p")"; done \
-    | jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t") | {path: .[0], sha256: .[1]}]') || return 1
+  n=$(printf '%s' "$scen" | jq 'length') || return 1
+  if [ "$n" -eq 0 ]; then
+    printf 'error: no feature scenarios under %s/features\n' "$root" >&2
+    return 1
+  fi
   jq -n -c --arg task "$2" --arg commit "$3" --arg approval "$4" --argjson at "$5" \
     --argjson files "$files" --argjson sc "$scen" \
     '{version: 1, task: $task, commit: $commit, approved_at: $at, approval: $approval, files: $files, scenarios: $sc}'
