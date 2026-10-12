@@ -413,6 +413,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/superpowers/specs/2026-10-12-spec-gate-design.md",
+      "audience": "maintainer-architecture"
+    },
+    {
       "path": "docs/subagent-guard.md",
       "audience": "maintainer-architecture"
     },
