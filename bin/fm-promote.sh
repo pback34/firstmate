@@ -71,6 +71,8 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
 # shellcheck source=bin/fm-secondmate-registry-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
+# shellcheck source=bin/fm-spec-lib.sh
+. "$SCRIPT_DIR/fm-spec-lib.sh"
 
 MODE=
 YOLO=
@@ -278,6 +280,17 @@ if [ -z "$(printf '%s' "$INTENT_BODY" | tr -d '[:space:]')" ]; then
   echo "error: $SCOUT_BRIEF has no provenance-marked Captain's intent; add the captain's actual words before promotion" >&2
   exit 1
 fi
+SPEC_LOCK=$(sed -n 's/^spec_lock=//p' "$META" | tail -n 1)
+SPEC_CONTRACT=
+if [ -n "$SPEC_LOCK" ]; then
+  if ! SPEC_REASON=$(fm_spec_archive_matches_lock "$SPEC_LOCK"); then
+    echo "error: cannot promote $ID: $SPEC_REASON; re-approve with bin/fm-spec.sh approve $ID --decision-file <captain words>" >&2
+    exit 1
+  fi
+  SPEC_EP=$(sed -n 's/^Acceptance entrypoint: //p' "$SCOUT_BRIEF" | head -n 1)
+  [ -n "$SPEC_EP" ] || { echo "error: cannot promote $ID: its brief records no Acceptance entrypoint" >&2; exit 1; }
+  SPEC_CONTRACT=$(fm_spec_ship_contract "$ID" "$SPEC_LOCK" "$SPEC_EP" "$FM_ROOT" "$FM_HOME")
+fi
 
 # The promoted worker must receive the same delivery contract an ordinary ship
 # brief carries, so the mode-specific Definition of done is rendered from its
@@ -340,6 +353,7 @@ $PROMOTION_SHIP_SPEC
 
 EOF
   promote_delivery_contract
+  [ -z "$SPEC_CONTRACT" ] || printf '\n%s\n' "$SPEC_CONTRACT"
 } > "$TMP" || { echo "error: could not render ship instructions for mode=$MODE" >&2; exit 1; }
 mv "$TMP" "$INSTRUCTIONS"
 TMP=
@@ -354,6 +368,7 @@ BRIEF_REPLACEMENT="$DATA/$ID/.brief.md.promote.${BASHPID:-$$}"
   printf '\n\n'
   printf '# Current ship Firstmate spec\n%s\n\n' "$PROMOTION_SHIP_SPEC"
   promote_delivery_contract
+  [ -z "$SPEC_CONTRACT" ] || printf '\n%s\n' "$SPEC_CONTRACT"
 } > "$BRIEF_REPLACEMENT" || {
   echo "error: could not render the promoted brief for mode=$MODE" >&2
   exit 1
