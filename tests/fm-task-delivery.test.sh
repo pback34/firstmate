@@ -157,6 +157,54 @@ EOF
   pass "fm-spawn: the brief's recorded mode and the spawn's explicit mode must agree"
 }
 
+# A spec scout's brief names the acceptance entrypoint it was rendered for, and the
+# spawn refuses when the project registers a different one. The check runs before
+# any endpoint exists, so a refused spawn leaves no task metadata behind.
+test_spawn_refuses_a_spec_scout_entrypoint_mismatch() {
+  local rec home proj fakebin out status
+  rec=$(make_home spec-entry "- proj [direct-PR acceptance=bin/acceptance] - x (added 2026-10-12)")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  FM_HOME="$home" "$BRIEF" spec-entry-m1 proj --scout --spec --acceptance bin/other >/dev/null 2>&1 \
+    || fail "a spec scout brief naming another entrypoint should still scaffold"
+  fill_brief_subsections "$home/data/spec-entry-m1/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-m1 "$proj" claude --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a spec scout whose brief names another entrypoint should exit non-zero"
+  assert_contains "$out" "acceptance entrypoint mismatch for spec-entry-m1" \
+    "mismatch refusal did not name the task"
+  assert_contains "$out" "the brief says bin/other but proj registers 'bin/acceptance'" \
+    "mismatch refusal did not show both sides of the disagreement"
+  assert_absent "$home/state/spec-entry-m1.meta" "mismatched spec scout spawn wrote task metadata"
+
+  FM_HOME="$home" "$BRIEF" spec-entry-m2 proj --scout --spec --acceptance bin/acceptance >/dev/null 2>&1 \
+    || fail "a spec scout brief naming the registered entrypoint should scaffold"
+  fill_brief_subsections "$home/data/spec-entry-m2/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-m2 "$proj" claude --scout)
+  assert_not_contains "$out" "acceptance entrypoint mismatch" \
+    "a matching acceptance entrypoint was reported as a mismatch"
+
+  # A registry entry that escapes the project is a refusal, not an empty entrypoint,
+  # so the spawn stops even though the brief names a path.
+  rec=$(make_home spec-escape "- proj [direct-PR acceptance=../escape] - x (added 2026-10-12)")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  FM_HOME="$home" "$BRIEF" spec-entry-r1 proj --scout --spec --acceptance bin/acceptance >/dev/null 2>&1 \
+    || fail "a spec scout brief should scaffold against a refusing registry entry"
+  fill_brief_subsections "$home/data/spec-entry-r1/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-r1 "$proj" claude --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a spec scout spawn against a refusing registry entry should exit non-zero"
+  assert_contains "$out" "spec-entry-r1 cannot launch" "a refusing registry entry did not stop the spawn"
+  assert_absent "$home/state/spec-entry-r1.meta" "a refused registry spawn wrote task metadata"
+  pass "fm-spawn: a spec scout's brief entrypoint must match the project's registered acceptance entrypoint"
+}
+
 # The registry is the captain's standing posture, so dropping below its rigor is
 # allowed but never silent, while matching or exceeding it stays quiet. An
 # unregistered project resolves to the same no-mistakes standing default
@@ -1743,6 +1791,7 @@ EOF
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
 test_spawn_refuses_a_brief_mode_mismatch
+test_spawn_refuses_a_spec_scout_entrypoint_mismatch
 test_spawn_notices_a_rigor_downgrade_against_the_registry
 test_scout_records_no_delivery_posture
 test_promote_requires_and_records_the_delivery_contract
