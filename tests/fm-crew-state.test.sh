@@ -49,6 +49,8 @@ set -u
 . "$ROOT/bin/fm-classify-lib.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-pr-lib.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-spec-lib.sh"
 
 CREW_STATE="$ROOT/bin/fm-crew-state.sh"
 TMP_ROOT=$(fm_test_tmproot fm-crew-state)
@@ -1163,6 +1165,42 @@ test_ci_ready_done_log_beats_monitoring_run() {
   assert_contains "$out" "checks green" "ci-ready detail preserves the report"
   assert_not_contains "$out" "state: working" "ci-ready is not hidden by monitoring run"
   pass "ci-ready status log beats monitoring run"
+}
+
+# A locked task's checks-green done reads done without its lock, and reads
+# blocked with the lock until its spec gate passes. The copy's HEAD carries the
+# locked feature, so the one refusal left is the missing acceptance run.
+test_locked_ci_ready_done_is_refused_without_acceptance() {
+  reset_fakes
+  local d lock out
+  d=$(new_case locked-ci-ready)
+  make_repo_on_branch "$d/wt" fm/feat-lockedci
+  mkdir -p "$d/wt/features" "$d/spec/features"
+  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$d/wt/features/demo.feature"
+  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$d/spec/features/demo.feature"
+  git -C "$d/wt" add features
+  git -C "$d/wt" commit -q -m spec
+  # Pushing the branch makes the copy's HEAD reachable outside the worktree.
+  git -C "$d/wt" update-ref refs/remotes/origin/fm/feat-lockedci HEAD
+  FM_FAKE_RUN_HEAD=$(git -C "$d/wt" rev-parse HEAD)
+  export FM_FAKE_RUN_HEAD
+  lock="$d/spec-lock.json"
+  fm_spec_build_lock "$d/spec" feat-lockedci "$FM_FAKE_RUN_HEAD" approval 1 > "$lock" \
+    || fail "could not build the spec lock"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-lockedci.meta" "window=fm:fm-feat-lockedci" "worktree=$d/wt" "kind=ship"
+  printf 'done: PR https://github.com/o/r/pull/2 checks green\n' > "$d/state/feat-lockedci.status"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-lockedci)"
+  out=$(run_crew_state "$d" feat-lockedci)
+  assert_contains "$out" "state: done" "unlocked control: ci-ready status log -> done"
+
+  fm_write_meta "$d/state/feat-lockedci.meta" "window=fm:fm-feat-lockedci" "worktree=$d/wt" "kind=ship" \
+    "spec_lock=$lock"
+  out=$(run_crew_state "$d" feat-lockedci)
+  assert_contains "$out" "state: blocked" "a locked ci-ready done must not read as done"
+  assert_contains "$out" "acceptance run missing" "the locked refusal must name the missing acceptance run"
+  assert_not_contains "$out" "state: done" "a locked ci-ready done must not remain done"
+  pass "a locked ci-ready done is blocked without an acceptance run"
 }
 
 # Regression for the PR #252 incident: the crew's own status log never got a
@@ -5531,6 +5569,7 @@ test_parked_human_decision_comes_from_the_action_column
 test_scalar_gate_parked_not_superseded
 test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
+test_locked_ci_ready_done_is_refused_without_acceptance
 test_ci_monitoring_checks_green_surfaces_done
 test_top_level_ci_checks_green_surfaces_done
 test_ci_monitoring_no_checks_terminal_surfaces_done
