@@ -117,3 +117,29 @@ fm_spec_build_lock() {  # <root> <task> <commit> <approval> <approved-at>
     --argjson files "$files" --argjson sc "$scen" \
     '{version: 1, task: $task, commit: $commit, approved_at: $at, approval: $approval, files: $files, scenarios: $sc}'
 }
+
+fm_spec_record_from_cucumber() {  # <cucumber-json> <worktree> <head> <entrypoint> <exit> <ran-at>
+  local real
+  real=$(cd "$2" 2>/dev/null && pwd -P) || real=$2
+  jq -c --arg wt "$2" --arg real "$real" --arg head "$3" --arg ep "$4" --argjson exit "$5" --argjson ran "$6" '
+    def strip($p): if startswith($p + "/") then .[($p | length) + 1:] else . end;
+    def norm: sub("^classpath:"; "") | sub("^file:(//)?"; "") | gsub("\\\\"; "/")
+      | strip($wt) | strip($real) | sub("^\\./"; "");
+    def canon: . as $s | if (["passed","failed","undefined","pending","skipped","ambiguous"] | any(. == $s)) then $s else "unknown" end;
+    def rank: {"passed":0,"skipped":1,"pending":2,"undefined":3,"unknown":4,"ambiguous":5,"failed":6}[.];
+    def worst: if length == 0 then "unknown" else max_by(rank) end;
+    def hook: (.hidden == true) or (((.keyword // "") | gsub("^\\s+|\\s+$"; "")) as $k | $k == "Before" or $k == "After");
+    def results: [(.before[]?, .steps[]?, .after[]?) | (.result.status // "unknown") | ascii_downcase | canon];
+    [ .[] | (.uri | norm) as $u
+      | (.elements // []) | reduce .[] as $e ({bg: null, out: []};
+          if ($e.type // "scenario") == "background" then .bg = $e
+          else .out += [{e: $e, bg: .bg}] | .bg = null end)
+      | .out[]
+      | { uri: $u, line: .e.line, name: (.e.name // ""),
+          steps: ([(.bg // {}).steps[]?, .e.steps[]? | select(hook | not)] | length),
+          status: (((.bg // {}) | results) + (.e | results) | worst) } ] as $sc
+    | { version: 1, head: $head, ran_at: $ran, entrypoint: $ep, exit: $exit, scenarios: $sc,
+        counts: (reduce ("passed","failed","undefined","pending","skipped","ambiguous","unknown") as $k
+          ({}; .[$k] = ([$sc[] | select(.status == $k)] | length))) }
+  ' "$1"
+}
