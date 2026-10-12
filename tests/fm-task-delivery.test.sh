@@ -482,7 +482,7 @@ make_locked_spec_scout() {  # <home> <id>
     "Ship the locked spec contract." "Preserve the locked acceptance spec."
   printf 'Acceptance entrypoint: bin/acceptance\n' >> "$data/$id/brief.md"
   mkdir -p "$data/$id/spec/features"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$data/$id/spec/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$data/$id/spec/features/demo.feature"
   fm_spec_build_lock "$data/$id/spec" "$id" c0ffee approval 1 > "$data/$id/spec-lock.json" \
     || fail "the spec lock should build from the archived features"
   printf 'spec_lock=%s\n' "$data/$id/spec-lock.json" >> "$meta"

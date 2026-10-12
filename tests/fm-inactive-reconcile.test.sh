@@ -252,8 +252,8 @@ test_locked_ci_ready_done_is_refused_without_acceptance() {
   make_world locked-ready; bind_secondmate local
   write_child "$MATE" child 'done: PR https://example.test/owner/repo/pull/1 checks green'
   mkdir -p "$MATE/projects/child/features" "$WORLD/spec/features"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$MATE/projects/child/features/demo.feature"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$WORLD/spec/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$MATE/projects/child/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$WORLD/spec/features/demo.feature"
   git -C "$MATE/projects/child" add features
   git -C "$MATE/projects/child" commit -q -m spec
   fm_spec_build_lock "$WORLD/spec" child "$(git -C "$MATE/projects/child" rev-parse HEAD)" approval 1 \

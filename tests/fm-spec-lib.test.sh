@@ -10,7 +10,7 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-spec-lib)
 fm_git_identity fmtest fmtest@example.invalid
-FIX="$ROOT/tests/assets/spec-gate"
+FIX="$ROOT/tests/fixtures/spec-gate"
 TAB=$(printf '\t')
 
 row() {  # <line> <steps> <outline-line> <ordinal> <name>

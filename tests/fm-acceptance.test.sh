@@ -9,7 +9,7 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-acceptance)
 fm_git_identity fmtest fmtest@example.invalid
-FIX="$ROOT/tests/assets/spec-gate"
+FIX="$ROOT/tests/fixtures/spec-gate"
 
 setup() {  # <name> <entrypoint-body>; sets HOME_DIR WT
   HOME_DIR="$TMP_ROOT/$1-home"
