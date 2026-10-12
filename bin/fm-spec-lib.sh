@@ -143,3 +143,95 @@ fm_spec_record_from_cucumber() {  # <cucumber-json> <worktree> <head> <entrypoin
           ({}; .[$k] = ([$sc[] | select(.status == $k)] | length))) }
   ' "$1"
 }
+
+fm_spec_gate_scenarios() {  # <lock> <record>
+  jq -r -n --slurpfile L "$1" --slurpfile R "$2" '
+    def at($rs; $u; $l): [$rs[] | select(.uri == $u and .line == $l)];
+    def find($rs; $s): (at($rs; $s.uri; $s.line)[0])
+      // (if $s.outline_line then at($rs; $s.uri; $s.outline_line)[$s.ordinal - 1] else null end);
+    ($L[0].scenarios) as $ls | ($R[0].scenarios) as $rs
+    | [$ls[] | select(find($rs; .) == null) | "\(.uri):\(.line)"] as $notrun
+    | [$ls[] | . as $s | find($rs; $s) | select(. != null and .steps < $s.steps)
+        | "\($s.uri):\($s.line) unknown(steps \(.steps)/\($s.steps))"] as $short
+    | [$rs[] | select(.status != "passed") | "\(.uri):\(.line) \(.status)"] as $bad
+    | (if ($notrun | length) > 0 then "notrun " + ($notrun | join(" ")) else empty end),
+      (if (($short + $bad) | length) > 0 then "notpassing " + (($short + $bad) | unique | join(" ")) else empty end)
+  '
+}
+
+# 0 when the locked spec passes at <worktree>'s HEAD; otherwise one reason line
+# on stdout and 1. The checks run in the order the design's gate table lists.
+fm_spec_gate() {  # <lock> <worktree>
+  local lock=$1 wt=$2 head rec rhead ex out notrun bad changed
+  if [ ! -r "$lock" ] || ! jq -e '.version == 1 and (.files | type == "array") and (.scenarios | type == "array")' "$lock" >/dev/null 2>&1; then
+    printf '%s\n' "spec lock unreadable"
+    return 1
+  fi
+  if [ -z "$wt" ] || [ ! -d "$wt" ] || ! head=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null); then
+    printf '%s\n' "named head cannot be verified for a locked spec"
+    return 1
+  fi
+  changed=$(jq -r '.files[] | "\(.sha256) \(.path)"' "$lock" | while IFS=' ' read -r want path; do
+    if ! git -C "$wt" cat-file -e "HEAD:$path" 2>/dev/null \
+      || [ "$(git -C "$wt" show "HEAD:$path" | fm_spec_sha256)" != "$want" ]; then
+      printf '%s\n' "$path"
+    fi
+  done | paste -sd' ' -)
+  if [ -n "$changed" ]; then
+    printf 'locked spec changed: %s; needs captain re-approval\n' "$changed"
+    return 1
+  fi
+  rec="${lock%/*}/acceptance.json"
+  if [ ! -r "$rec" ] || ! rhead=$(jq -er '.head' "$rec" 2>/dev/null); then
+    printf '%s\n' "acceptance run missing"
+    return 1
+  fi
+  if [ "$rhead" != "$head" ]; then
+    printf 'acceptance run is for %s, not head %s; rerun fm-acceptance.sh as the last step\n' "$rhead" "$head"
+    return 1
+  fi
+  ex=$(jq -r '.exit' "$rec")
+  if [ "$ex" != 0 ]; then
+    printf 'acceptance entrypoint exited %s\n' "$ex"
+    return 1
+  fi
+  out=$(fm_spec_gate_scenarios "$lock" "$rec") || { printf '%s\n' "acceptance run unreadable"; return 1; }
+  notrun=$(printf '%s\n' "$out" | sed -n 's/^notrun //p')
+  bad=$(printf '%s\n' "$out" | sed -n 's/^notpassing //p')
+  if [ -n "$notrun" ]; then
+    printf 'scenarios not run: %s\n' "$notrun"
+    return 1
+  fi
+  if [ -n "$bad" ]; then
+    printf 'scenarios not passing: %s\n' "$bad"
+    return 1
+  fi
+  return 0
+}
+
+fm_spec_archive_matches_lock() {  # <lock>
+  local lock=$1 bad
+  if [ ! -r "$lock" ] || ! jq -e '.version == 1' "$lock" >/dev/null 2>&1; then
+    printf '%s\n' "spec lock unreadable"
+    return 1
+  fi
+  bad=$(jq -r '.files[] | "\(.sha256) \(.path)"' "$lock" | while IFS=' ' read -r want path; do
+    f="${lock%/*}/spec/$path"
+    if [ ! -f "$f" ] || [ "$(fm_spec_sha256 < "$f")" != "$want" ]; then printf '%s\n' "$path"; fi
+  done | paste -sd' ' -)
+  [ -z "$bad" ] || { printf 'archived spec does not match the lock: %s\n' "$bad"; return 1; }
+}
+
+fm_spec_ship_contract() {  # <task-id> <lock> <entrypoint> <fm-root> <fm-home>
+  local id=$1 lock=$2 ep=$3 root=$4 home=$5 dir=${2%/*}
+  cat <<EOF
+# Locked acceptance spec
+Spec lock: $lock
+The captain approved the scenarios archived in \`$dir/spec/features/\`; they are locked by content hash.
+1. Before implementing, restore them into this branch unchanged with \`mkdir -p features && cp -R "$dir/spec/features/." features/\`, and commit them as your branch's first commit.
+2. Never edit, rename, delete, tag-filter, or skip a locked feature file or scenario. If a scenario looks wrong or impossible, stop and escalate to firstmate; only the captain can change the spec.
+3. Implement test-first and make every locked scenario executable through \`$ep\`: run from the worktree root with one argument, an absolute path, it must write a Cucumber JSON report there and exit 0 only when everything passed. Create it if the project lacks it.
+4. As your LAST step, run \`FM_HOME=$home $root/bin/fm-acceptance.sh run $id\`: after implementation, after any no-mistakes pipeline fixes are in this copy (and after Gerrit custody recovery where it applies), on the exact head your ready report names, with no commits afterwards.
+5. Your ready \`done:\` is refused until the locked files are unchanged at that head and the recorded run shows exit 0 with every scenario passed. If it is refused, rerun step 4; re-implement only when the refusal names failing scenarios.
+EOF
+}

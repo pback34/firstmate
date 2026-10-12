@@ -184,6 +184,95 @@ EOF
   pass "record merges backgrounds, hides hooks, and maps unknown statuses"
 }
 
+locked_copy() {  # <name>; prints "<lock> <worktree>" for a committed demo spec
+  local repo wt dir
+  repo="$TMP_ROOT/$1-repo"
+  wt="$TMP_ROOT/$1-wt"
+  dir="$TMP_ROOT/$1-data"
+  fm_git_worktree "$repo" "$wt" "fm/$1"
+  mkdir -p "$wt/features/with space" "$dir/spec/features/with space"
+  cp "$FIX/demo.feature" "$wt/features/with space/demo.feature"
+  cp "$FIX/demo.feature" "$dir/spec/features/with space/demo.feature"
+  git -C "$wt" add features
+  git -C "$wt" commit -q -m spec
+  fm_spec_build_lock "$dir/spec" "$1" "$(git -C "$wt" rev-parse HEAD)" approval 1 > "$dir/spec-lock.json"
+  printf '%s %s\n' "$dir/spec-lock.json" "$wt"
+}
+
+write_record() {  # <lock> <worktree> <jq-transform> [<exit>]
+  jq 'map(.uri = "features/with space/demo.feature")' "$FIX/cucumber-js-11.json" > "$TMP_ROOT/in.json"
+  fm_spec_record_from_cucumber "$TMP_ROOT/in.json" "$2" "$(git -C "$2" rev-parse HEAD)" bin/acceptance "${4:-0}" 1 \
+    | jq -c "$3" > "${1%/*}/acceptance.json"
+}
+
+gate_reason() {  # <lock> <worktree>
+  fm_spec_gate "$1" "$2" && echo ACCEPTED
+}
+
+test_gate_accepts_a_fully_passing_run() {
+  local lock wt
+  read -r lock wt <<EOF
+$(locked_copy pass)
+EOF
+  write_record "$lock" "$wt" '.scenarios |= map(.status = "passed")'
+  assert_equals ACCEPTED "$(gate_reason "$lock" "$wt")" "all locked scenarios passed at HEAD with exit 0"
+  pass "gate accepts a fully passing run"
+}
+
+test_gate_refusals() {
+  local lock wt
+  read -r lock wt <<EOF
+$(locked_copy refuse)
+EOF
+  assert_equals "acceptance run missing" "$(gate_reason "$lock" "$wt")" "no record"
+  write_record "$lock" "$wt" '.'
+  assert_contains "$(gate_reason "$lock" "$wt")" "scenarios not passing: features/with space/demo.feature:11 undefined" "real cucumber-js failures"
+  write_record "$lock" "$wt" '.scenarios |= map(.status = "passed")' 1
+  assert_equals "acceptance entrypoint exited 1" "$(gate_reason "$lock" "$wt")" "non-zero exit"
+  write_record "$lock" "$wt" '.scenarios |= map(select(.line != 24) | .status = "passed")'
+  assert_equals "scenarios not run: features/with space/demo.feature:24" "$(gate_reason "$lock" "$wt")" "missing locked row"
+  write_record "$lock" "$wt" '.scenarios |= map(.status = "passed") | .head = "0000000"'
+  assert_contains "$(gate_reason "$lock" "$wt")" "acceptance run is for 0000000, not head" "stale head"
+  printf 'Feature: extra\n' >> "$wt/features/with space/demo.feature"
+  git -C "$wt" commit -q -am 'weaken spec'
+  assert_equals "locked spec changed: features/with space/demo.feature; needs captain re-approval" "$(gate_reason "$lock" "$wt")" "edited locked file"
+  assert_equals "named head cannot be verified for a locked spec" "$(gate_reason "$lock" "$TMP_ROOT/no-such-wt")" "missing copy"
+  printf 'not json' > "$lock"
+  assert_equals "spec lock unreadable" "$(gate_reason "$lock" "$wt")" "corrupt lock"
+  pass "gate refusals"
+}
+
+test_gate_matches_outline_rows_by_ordinal_and_catches_short_steps() {
+  local lock wt head
+  read -r lock wt <<EOF
+$(locked_copy pyshape)
+EOF
+  head=$(git -C "$wt" rev-parse HEAD)
+  jq 'map(.uri = "features/with space/demo.feature")' "$FIX/pytest-bdd.json" > "$TMP_ROOT/py.json"
+  fm_spec_record_from_cucumber "$TMP_ROOT/py.json" "$wt" "$head" bin/acceptance 0 1 \
+    | jq -c '.scenarios |= map(.status = "passed")' > "${lock%/*}/acceptance.json"
+  assert_equals "scenarios not passing: features/with space/demo.feature:11 unknown(steps 1/2)" "$(gate_reason "$lock" "$wt")" \
+    "outline rows matched by ordinal; the omitted undefined step is caught"
+  pass "gate matches outline rows by ordinal and catches short step counts"
+}
+
+test_archive_check_and_contract() {
+  local lock wt out
+  read -r lock wt <<EOF
+$(locked_copy archive)
+EOF
+  fm_spec_archive_matches_lock "$lock" || fail "intact archive must match"
+  printf 'x' >> "${lock%/*}/spec/features/with space/demo.feature"
+  out=$(fm_spec_archive_matches_lock "$lock") && fail "a modified archive must not match"
+  assert_contains "$out" "archived spec does not match the lock: features/with space/demo.feature" "names the file"
+  out=$(fm_spec_ship_contract t9 "$lock" bin/acceptance /fm /home/x)
+  assert_contains "$out" "# Locked acceptance spec" "section heading"
+  assert_contains "$out" "Spec lock: $lock" "lock path"
+  assert_contains "$out" "FM_HOME=/home/x /fm/bin/fm-acceptance.sh run t9" "acceptance command"
+  assert_contains "$out" "bin/acceptance" "entrypoint"
+  pass "archive check and contract text"
+}
+
 test_parser_matches_the_probe_feature
 test_parser_ignores_docstrings_comments_tags_and_step_tables
 test_parser_treats_crlf_like_lf
@@ -194,4 +283,8 @@ test_record_reads_cucumber_js_statuses
 test_record_keeps_pytest_bdd_shape_for_the_gate
 test_record_normalizes_uri_forms
 test_record_merges_backgrounds_hides_hooks_and_maps_unknown
+test_gate_accepts_a_fully_passing_run
+test_gate_refusals
+test_gate_matches_outline_rows_by_ordinal_and_catches_short_steps
+test_archive_check_and_contract
 echo "all fm-spec-lib tests passed"
