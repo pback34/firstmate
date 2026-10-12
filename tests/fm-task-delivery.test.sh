@@ -16,6 +16,8 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-spec-lib.sh
+. "$ROOT/bin/fm-spec-lib.sh"
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
 BRIEF="$ROOT/bin/fm-brief.sh"
@@ -403,6 +405,11 @@ STUB
       "$mode: promoted worker did not receive the Captain's intent subsection"
     assert_grep "## Firstmate spec" "$payload" \
       "$mode: promoted worker did not receive the Firstmate spec subsection"
+    # A task without a spec_lock= carries no locked-spec contract in either output.
+    assert_no_grep "# Locked acceptance spec" "$payload" \
+      "$mode: a task without a spec lock received a locked-spec contract"
+    assert_no_grep "# Locked acceptance spec" "$home/data/$id/brief.md" \
+      "$mode: a task without a spec lock kept a locked-spec contract in its brief"
 
     # Both the delivered prompt and persisted relaunch brief are public outputs.
     for contract in "$payload" "$home/data/$id/brief.md"; do
@@ -457,6 +464,61 @@ STUB
   assert_no_grep "no-mistakes axi respond" "$TMP_ROOT/promote-dod/payload-promote-dod-direct-pr" \
     "promoted direct-PR worker received the pipeline gate contract"
   pass "fm-promote: a promoted worker receives the same mode-specific delivery contract a briefed one does"
+}
+
+# A spec scout whose brief names an acceptance entrypoint and whose archived
+# features are locked. Setup is the same scout path test_promotion_delivers_the_real_definition_of_done
+# takes, plus the lock: <home>/data/<id>/spec-lock.json locks the archived features
+# and the meta records it in spec_lock=.
+make_locked_spec_scout() {  # <home> <id>
+  local home=$1 id=$2 data meta
+  data="$home/data"
+  meta="$home/state/$id.meta"
+  mkdir -p "$home/state"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+  FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 \
+    || fail "spec scout brief generation should succeed"
+  fill_brief_subsections "$data/$id/brief.md" \
+    "Ship the locked spec contract." "Preserve the locked acceptance spec."
+  printf 'Acceptance entrypoint: bin/acceptance\n' >> "$data/$id/brief.md"
+  mkdir -p "$data/$id/spec/features"
+  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$data/$id/spec/features/demo.feature"
+  fm_spec_build_lock "$data/$id/spec" "$id" c0ffee approval 1 > "$data/$id/spec-lock.json" \
+    || fail "the spec lock should build from the archived features"
+  printf 'spec_lock=%s\n' "$data/$id/spec-lock.json" >> "$meta"
+}
+
+test_promotion_appends_the_locked_spec_contract() {
+  local home data id out
+  home="$TMP_ROOT/promote-spec-locked/home"
+  data="$home/data"
+  id=promote-spec-locked
+  make_locked_spec_scout "$home" "$id"
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1) \
+    || fail "promotion with a locked spec should succeed (got: $out)"
+  assert_grep "# Locked acceptance spec" "$data/$id/ship-instructions.md" "instructions carry the contract"
+  assert_grep "# Locked acceptance spec" "$data/$id/brief.md" "relaunch brief carries the contract"
+  assert_grep "fm-acceptance.sh run $id" "$data/$id/ship-instructions.md" "acceptance command"
+  assert_grep "through \`bin/acceptance\`" "$data/$id/ship-instructions.md" "contract names the brief's entrypoint"
+  pass "promotion appends the locked-spec contract"
+}
+
+test_promotion_refuses_a_tampered_archive() {
+  local home data id meta out code
+  home="$TMP_ROOT/promote-spec-tamper/home"
+  data="$home/data"
+  id=promote-spec-tamper
+  meta="$home/state/$id.meta"
+  make_locked_spec_scout "$home" "$id"
+  printf 'x' >> "$data/$id/spec/features/demo.feature"
+  code=0
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1) || code=$?
+  expect_code 1 "$code" "a tampered archive is refused"
+  assert_contains "$out" "archived spec does not match the lock" "tamper refusal"
+  assert_grep "kind=scout" "$meta" "meta unchanged on refusal"
+  assert_absent "$data/$id/ship-instructions.md" "a refused promotion rendered ship instructions"
+  assert_no_grep "# Locked acceptance spec" "$data/$id/brief.md" "a refused promotion changed the brief"
+  pass "promotion refuses a tampered archive"
 }
 
 test_promotion_persists_the_selected_ship_branch() {
@@ -1724,6 +1786,8 @@ test_scout_records_no_delivery_posture
 test_promote_requires_and_records_the_delivery_contract
 test_promote_refuses_a_symlinked_task_record
 test_promotion_delivers_the_real_definition_of_done
+test_promotion_appends_the_locked_spec_contract
+test_promotion_refuses_a_tampered_archive
 test_promotion_persists_the_selected_ship_branch
 test_promotion_branch_command_is_shell_safe
 test_local_merge_uses_the_recorded_ship_branch
