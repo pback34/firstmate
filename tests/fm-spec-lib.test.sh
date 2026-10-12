@@ -62,7 +62,7 @@ EOF
 
 test_parser_treats_crlf_like_lf() {
   local lf crlf
-  sed 's/$/\r/' "$FIX/demo.feature" > "$TMP_ROOT/crlf.feature"
+  awk '{ printf "%s\r\n", $0 }' "$FIX/demo.feature" > "$TMP_ROOT/crlf.feature"
   lf=$(fm_spec_parse_feature "$FIX/demo.feature" x)
   crlf=$(fm_spec_parse_feature "$TMP_ROOT/crlf.feature" x)
   assert_equals "$lf" "$crlf" "CRLF feature parses like LF"
@@ -85,8 +85,52 @@ test_lock_hashes_files_and_lists_scenarios() {
   pass "lock hashes files and lists scenarios"
 }
 
+# expect_lock_refused <root> <msg>: the builder must exit non-zero, print no
+# lock JSON on stdout, and name the refusal with an error: line on stderr.
+expect_lock_refused() {
+  local out code err
+  out=$(fm_spec_build_lock "$1" t1 abc123 'captain-hold:t1' 1791400000 2>"$TMP_ROOT/refused.err")
+  code=$?
+  err=$(cat "$TMP_ROOT/refused.err")
+  assert_not_equals 0 "$code" "$2 exits non-zero"
+  assert_equals "" "$out" "$2 prints no lock JSON"
+  assert_contains "$err" "error:" "$2 names the refusal on stderr"
+}
+
+test_lock_fails_closed_on_missing_or_empty_features() {
+  local root
+  expect_lock_refused "$TMP_ROOT/absent-root" "missing root"
+  root="$TMP_ROOT/no-features-root"
+  mkdir -p "$root"
+  expect_lock_refused "$root" "root without features/"
+  root="$TMP_ROOT/empty-features-root"
+  mkdir -p "$root/features"
+  expect_lock_refused "$root" "empty features/"
+  root="$TMP_ROOT/no-scenario-root"
+  mkdir -p "$root/features"
+  printf 'Feature: Empty\n' > "$root/features/empty.feature"
+  expect_lock_refused "$root" "feature file with no scenarios"
+  pass "lock refuses a missing root, a root without features, an empty features dir, and a feature with no scenarios"
+}
+
+test_lock_fails_closed_on_dangling_or_symlinked_feature() {
+  local root
+  root="$TMP_ROOT/dangling-root"
+  mkdir -p "$root/features"
+  ln -s "$TMP_ROOT/nowhere.feature" "$root/features/dangling.feature"
+  expect_lock_refused "$root" "dangling feature symlink"
+  root="$TMP_ROOT/linked-root"
+  mkdir -p "$root/features"
+  cp "$FIX/demo.feature" "$TMP_ROOT/linked-target.feature"
+  ln -s "$TMP_ROOT/linked-target.feature" "$root/features/linked.feature"
+  expect_lock_refused "$root" "valid feature symlink"
+  pass "lock refuses a dangling or symlinked feature file"
+}
+
 test_parser_matches_the_probe_feature
 test_parser_ignores_docstrings_comments_tags_and_step_tables
 test_parser_treats_crlf_like_lf
 test_lock_hashes_files_and_lists_scenarios
+test_lock_fails_closed_on_missing_or_empty_features
+test_lock_fails_closed_on_dangling_or_symlinked_feature
 echo "all fm-spec-lib tests passed"
