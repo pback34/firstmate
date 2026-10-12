@@ -1697,6 +1697,49 @@ EOF
   pass "fm-project-mode: --branch-prefix resolves order-independently and defaults to the legacy fm/ prefix"
 }
 
+# The registry's acceptance= token names a project's acceptance entrypoint for
+# spec-gated work. --acceptance prints it (repo-relative, or empty), the token never
+# becomes the mode, and an absolute or ..-escaping path is refused with exit 3.
+test_project_mode_acceptance_token() {
+  local home out code
+  home="$TMP_ROOT/project-mode-acceptance/home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- shop [direct-PR acceptance=bin/acceptance branch=] - fixture (added 2026-10-12)
+- plain [direct-PR] - fixture (added 2026-10-12)
+- bad [direct-PR acceptance=../escape] - fixture (added 2026-10-12)
+- leading [acceptance=bin/leading direct-PR] - fixture (added 2026-10-12)
+- absolute [direct-PR acceptance=/abs/entry] - fixture (added 2026-10-12)
+- dotdot [direct-PR acceptance=..] - fixture (added 2026-10-12)
+EOF
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance shop 2>/dev/null)
+  [ "$out" = "bin/acceptance" ] || fail "--acceptance did not print the registered token (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" shop 2>/dev/null)
+  [ "$out" = "direct-PR off" ] || fail "the acceptance= token leaked into the mode/yolo output (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --branch-prefix shop 2>/dev/null)
+  [ "$out" = "" ] || fail "an empty branch= did not survive beside acceptance= (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance plain 2>/dev/null)
+  [ "$out" = "" ] || fail "a project with no acceptance= token did not print empty (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" leading 2>/dev/null)
+  [ "$out" = "direct-PR off" ] || fail "an acceptance= token before the mode became the mode (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance leading 2>/dev/null)
+  [ "$out" = "bin/leading" ] || fail "an acceptance= token before the mode did not print (got '$out')"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance bad >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "a path escaping the project is refused"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance absolute >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "an absolute acceptance path is refused"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance dotdot >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "a bare .. acceptance path is refused"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance never-registered 2>/dev/null)
+  [ "$out" = "" ] || fail "an unregistered project did not print empty for --acceptance (got '$out')"
+  out=$(FM_HOME="$TMP_ROOT/project-mode-acceptance/no-registry-home" "$PROJECT_MODE" --acceptance shop 2>/dev/null)
+  [ "$out" = "" ] || fail "an absent registry did not print empty for --acceptance (got '$out')"
+  pass "fm-project-mode: --acceptance prints the registered entrypoint, empty when none, and refuses an escaping path"
+}
+
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
 test_spawn_refuses_a_brief_mode_mismatch
@@ -1724,4 +1767,5 @@ test_promotion_carries_the_forge_binding
 test_forge_forgejo_rides_the_same_binding
 test_spawn_and_promote_require_filled_task_subsections
 test_project_mode_resolves_branch_prefix
+test_project_mode_acceptance_token
 echo "# all fm-task-delivery tests passed"
