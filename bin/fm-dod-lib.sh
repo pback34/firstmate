@@ -699,12 +699,13 @@ fm_dod_named_head_reachable_outside_worktree() {  # <worktree> <project> <mode> 
 # pr_head=, and the merge-notified marker; <meta> may be a captured copy
 # (bin/fm-fleet-snapshot.sh), so the marker is read from <state>.
 # A task whose meta carries spec_lock= must first pass bin/fm-spec-lib.sh's
-# fm_spec_gate, before any acceptance path.
+# fm_spec_gate, before any acceptance path. Callers must pass the task meta, or
+# the spec gate is skipped.
 fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state> <id> <meta>]
   local kind=$1 mode=$2 wt=$3 project=$4 line=$5 state=${6:-} id=${7:-} meta=${8:-} url sha gerrit spec_lock
   fm_dod_should_gate_ship_done "$kind" "$mode" "$line" || return 0
-  spec_lock=$(fm_dod_meta_value "$meta" spec_lock 2>/dev/null || true)
-  if [ -n "$spec_lock" ]; then
+  if grep -q '^spec_lock=' "$meta" 2>/dev/null; then
+    spec_lock=$(fm_dod_meta_value "$meta" spec_lock 2>/dev/null || true)
     fm_spec_gate "$spec_lock" "$wt" || return 1
   fi
   if url=$(fm_dod_pr_url_from_done_note "$(status_line_note "$line")") \

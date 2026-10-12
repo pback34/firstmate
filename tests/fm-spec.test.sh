@@ -87,6 +87,22 @@ test_reapproval_archives_lock_spec_and_stale_record() {
   pass "re-approval archives the lock, spec, and stale record"
 }
 
+# An interrupted approve can leave spec/ behind with no lock. The next approve must
+# archive that directory rather than nest its new stage inside it.
+test_approve_archives_a_spec_directory_left_without_a_lock() {
+  local d leftover
+  setup_scout s5
+  d="$HOME_DIR/data/s5"
+  mkdir -p "$d/spec"
+  printf 'left by an interrupted approve\n' > "$d/spec/marker.txt"
+  spec s5 approve s5 --decision-file "$TMP_ROOT/s5-words" >/dev/null || fail "approve over a spec directory without a lock"
+  assert_present "$d/spec/features" "the new spec did not land at spec/features"
+  leftover=$(find "$d" -name '.spec.stage.*' 2>/dev/null)
+  assert_equals "" "$leftover" "a staged spec was nested inside the directory"
+  assert_present "$d/spec.1/marker.txt" "the left-behind spec directory was not archived to spec.1"
+  pass "approve archives a spec directory left without a lock"
+}
+
 test_show_lists_candidate_then_locked() {
   local out
   setup_scout s4
@@ -102,5 +118,6 @@ test_show_lists_candidate_then_locked() {
 test_approve_records_release_archives_and_locks
 test_approve_refusals_write_nothing
 test_reapproval_archives_lock_spec_and_stale_record
+test_approve_archives_a_spec_directory_left_without_a_lock
 test_show_lists_candidate_then_locked
 echo "all fm-spec tests passed"

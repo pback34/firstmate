@@ -231,6 +231,10 @@ if [ -z "$(printf '%s' "$INTENT_BODY" | tr -d '[:space:]')" ]; then
   echo "error: $SCOUT_BRIEF has no provenance-marked Captain's intent; add the captain's actual words before promotion" >&2
   exit 1
 fi
+if grep -q '^Acceptance entrypoint: ' "$SCOUT_BRIEF" && [ -z "$(sed -n 's/^spec_lock=//p' "$META" | tail -n 1)" ]; then
+  echo "error: cannot promote $ID: spec scout not approved; run bin/fm-spec.sh approve $ID --decision-file <captain words>" >&2
+  exit 1
+fi
 SPEC_LOCK=$(sed -n 's/^spec_lock=//p' "$META" | tail -n 1)
 SPEC_CONTRACT=
 if [ -n "$SPEC_LOCK" ]; then
