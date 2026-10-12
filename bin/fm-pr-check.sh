@@ -166,7 +166,9 @@ case "$PROVIDER:$MODE" in
   *:no-mistakes|*:) DONE_LINE="done: PR $URL checks green" ;;
   *) DONE_LINE="done: PR $URL" ;;
 esac
-if { [ -z "$PR_HEAD" ] || ! fm_dod_forge_head_is_named_head "$MODE"; } \
+SPEC_LOCKED=0
+grep -q '^spec_lock=' "$META" 2>/dev/null && SPEC_LOCKED=1
+if { [ -z "$PR_HEAD" ] || ! fm_dod_forge_head_is_named_head "$MODE" || [ "$SPEC_LOCKED" = 1 ]; } \
   && ! GATE_REASON=$(fm_dod_accept_ship_done "${KIND:-ship}" "$MODE" "$WT" "$PROJECT" "$DONE_LINE" "$STATE" "$ID" "$META"); then
   echo "error: $GATE_REASON" >&2
   exit 1

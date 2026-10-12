@@ -9,6 +9,8 @@ set -u
 . "$ROOT/bin/fm-pr-lib.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-check-lib.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-spec-lib.sh"
 
 PR_CHECK="$ROOT/bin/fm-pr-check.sh"
 PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
@@ -757,6 +759,50 @@ test_direct_pr_unpushed_commit_refuses_registration() {
     || fail "direct-PR refusal did not name the unpushed commit: $(cat "$dir/stderr")"
   [ ! -e "$dir/home/state/task-a.check.sh" ] || fail "direct-PR unpushed commit still armed a poll"
   pass "fm-pr-check refuses a direct-PR registration while a later commit is only in the copy"
+}
+
+# Commits the demo spec in a worker copy and archives it beside a lock, as the
+# spec scout does, so the copy's HEAD carries the locked feature unchanged.
+commit_demo_spec() {  # <case-dir>
+  mkdir -p "$1/wt/features" "$1/spec/features"
+  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$1/wt/features/demo.feature"
+  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$1/spec/features/demo.feature"
+  git -C "$1/wt" add features
+  git -C "$1/wt" commit -q -m spec
+}
+
+# A locked task's registration is refused by the spec gate even when the forge
+# head is the copy's HEAD, which alone would skip the named-head gate in
+# no-mistakes mode. The unlocked control registers the same PR, so the refusal
+# belongs to the lock.
+test_locked_pr_registration_is_refused_without_acceptance() {
+  local dir control head rc
+  control=$(make_case locked-named-head-control)
+  write_task_meta "$control"
+  commit_demo_spec "$control"
+  head=$(git -C "$control/wt" rev-parse HEAD)
+  FM_TEST_GH_HEAD=$head run_check_entry "$control" task-a https://github.com/o/r/pull/4 \
+    > "$control/stdout" 2> "$control/stderr" \
+    || fail "the unlocked control did not register at the forge head: $(cat "$control/stderr")"
+
+  dir=$(make_case locked-named-head)
+  write_task_meta "$dir"
+  commit_demo_spec "$dir"
+  head=$(git -C "$dir/wt" rev-parse HEAD)
+  fm_spec_build_lock "$dir/spec" task-a "$head" approval 1 > "$dir/spec-lock.json" \
+    || fail "could not build the spec lock"
+  # The gate reads the lock with jq, and BASE_PATH may not carry it.
+  ln -sf "$REAL_JQ" "$dir/fakebin/jq"
+  printf 'spec_lock=%s\n' "$dir/spec-lock.json" >> "$dir/home/state/task-a.meta"
+  rc=0
+  FM_TEST_GH_HEAD=$head run_check_entry "$dir" task-a https://github.com/o/r/pull/4 \
+    > "$dir/stdout" 2> "$dir/stderr" || rc=$?
+  [ "$rc" -eq 1 ] || fail "locked registration exited $rc, not 1: $(cat "$dir/stderr")"
+  grep -Fxq 'error: acceptance run missing' "$dir/stderr" \
+    || fail "locked refusal did not name the missing acceptance run: $(cat "$dir/stderr")"
+  ! grep -q '^pr=' "$dir/home/state/task-a.meta" || fail "locked refusal still recorded pr="
+  [ ! -e "$dir/home/state/task-a.check.sh" ] || fail "locked refusal still armed a poll"
+  pass "fm-pr-check refuses a locked registration without an acceptance run, unlike its unlocked control"
 }
 
 test_valid_recording_and_merge_derivation() {
@@ -3633,6 +3679,7 @@ test_draft_pull_request_is_not_armed
 test_secondmate_record_refuses_a_pr_watch
 test_unpushed_named_head_refuses_registration
 test_direct_pr_unpushed_commit_refuses_registration
+test_locked_pr_registration_is_refused_without_acceptance
 test_valid_recording_and_merge_derivation
 test_rejected_metacharacter_bytes_are_inert
 test_static_poll_contract
