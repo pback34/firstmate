@@ -46,9 +46,9 @@ captain request
 2. captain review  firstmate holds the scout (fm-captain-hold.sh hold <id>), relays scenarios (fm-spec.sh show)
    |               captain approves or requests changes (scout iterates, hold stays)
    v
-3. approve + lock  fm-captain-hold.sh answer <id> --decision-file <words> --release
-   |               fm-spec.sh approve <id>
-   |               -> data/<id>/spec/features/** (archived contents) + data/<id>/spec-lock.json, meta spec_lock=1
+3. approve + lock  fm-spec.sh approve <id> --decision-file <words> [--hold <backlog-id>]
+   |               records the captain's words via fm-captain-hold.sh answer <hold> --decision-file <words> --release
+   |               -> data/<id>/spec/features/** (archived contents) + data/<id>/spec-lock.json, meta spec_lock=<absolute path to data/<id>/spec-lock.json>
    v
 4. promote         fm-promote.sh <id> --mode ... --yolo ...   (CLI unchanged; preflights and appends the locked-spec contract)
    |
@@ -64,9 +64,9 @@ Rules:
 
 - Opt-in: only tasks promoted from an approved spec scout carry `spec_lock`; all other ship and scout paths are unchanged.
 - The scout never pushes, and its scratch copy is disposable; `approve` archives the feature file contents into the task's data directory, so nothing depends on the scratch copy surviving.
-- Approval is a release, not a completion: the scout task is held while the captain reviews, and the captain's words are recorded with `answer --release` so the same task proceeds to promotion.
-  `fm-spec.sh approve` refuses unless the task's newest captain-hold record is a release.
-- Mid-task spec changes: the worker escalates to firstmate, firstmate holds the task for the captain, and only a new `answer --release` followed by `fm-spec.sh approve` replaces the lock.
+- Approval is a release, not a completion: the scout task is held while the captain reviews, and `fm-spec.sh approve` records the captain's words with `fm-captain-hold.sh answer <hold> --decision-file <words> --release` so the same task proceeds to promotion.
+  That recording is idempotent on an exact retry and is rejected when the newest captain-hold record has another mode, which makes `approve` refuse.
+- Mid-task spec changes: the worker escalates to firstmate, firstmate holds the task for the captain, and only a new `fm-spec.sh approve` with the captain's new decision file replaces the lock.
 - Owning home: every `fm-spec.sh` and captain-hold command runs in the home that owns the task; for a secondmate-owned scout, scenario relay and the captain's answer travel over the existing marked-request parent channel (`bin/fm-send.sh`, `bin/fm-pending-reply-lib.sh`).
 - A spec scout requires a registered `acceptance=` entrypoint; on a new project the first ship task creates the entrypoint at the registered path.
 
@@ -74,14 +74,14 @@ Rules:
 
 | Unit | Status | Owns |
 |---|---|---|
-| `bin/fm-spec-lib.sh` | new | The single owner of the spec-gate contract: lock and record formats, scenario parsing, URI normalization, the status map, and `fm_dod_spec_gate`'s checks. Side-effect free. |
-| `bin/fm-spec.sh` | new | Firstmate CLI. `show <id>` prints candidate (scout copy) or locked scenarios. `approve <id>` resolves the scout worktree from task meta, requires a newest captain-hold release record, archives `features/**/*.feature` committed at that HEAD into `data/<id>/spec/`, writes the lock, and sets `spec_lock=1` under the meta lock with atomic publish. Re-approval archives the previous lock and spec directory. |
+| `bin/fm-spec-lib.sh` | new | The single owner of the spec-gate contract: lock and record formats, scenario parsing, URI normalization, the status map, `fm_dod_spec_gate`'s checks, and the locked-spec contract text (`fm_spec_ship_contract`). Side-effect free. |
+| `bin/fm-spec.sh` | new | Firstmate CLI. `show <id>` prints candidate (scout copy) or locked scenarios. `approve <id> --decision-file <words> [--hold <backlog-id>]` (`--hold` defaults to the task id) resolves the scout worktree from task meta, archives `features/**/*.feature` committed at that HEAD into a staging copy, and records the captain's words as a release with `fm-captain-hold.sh answer <hold> --decision-file <words> --release` before the lock is written. It then writes `data/<id>/spec/`, the lock with `approval` set to `captain-hold:<hold-id> sha256:<sha of the decision file>`, and sets `spec_lock=<absolute path to data/<id>/spec-lock.json>` under the meta lock with atomic publish. Re-approval archives the previous lock and spec directory. |
 | `bin/fm-acceptance.sh` | new | Worker CLI. `run <id>` requires a clean tree, invokes the entrypoint recorded in the brief with an absolute report path, parses Cucumber JSON, and writes the acceptance record. |
 | `bin/fm-project-mode.sh` | changed | Recognizes `acceptance=<path>` as a keyed token (never the mode) and prints it only through a separate `--acceptance` query, leaving the posture line and its branch-last invariant untouched. |
 | `bin/fm-brief.sh` | changed | `--scout --spec --acceptance <path>` renders the spec-scout brief and records `Acceptance entrypoint: <path>` machine-readably; refuses `--spec` without `--acceptance` and `--acceptance` without `--spec`. It still never reads the registry. |
 | `bin/fm-spawn.sh` | changed | Refuses a spec-scout brief whose recorded entrypoint disagrees with `fm-project-mode.sh --acceptance`, mirroring its existing mode and branch agreement checks. |
-| `bin/fm-promote.sh` | changed | When meta has `spec_lock`: preflights that the archived files match the lock hashes (refuses otherwise), and appends the locked-spec contract to `ship-instructions.md` and `brief.md`. |
-| `bin/fm-dod-lib.sh` | changed | `fm_dod_block` renders the acceptance-last requirement when locked. `fm_dod_accept_ship_done` calls `fm_dod_spec_gate` immediately after `fm_dod_should_gate_ship_done` and before every early acceptance return. |
+| `bin/fm-promote.sh` | changed | When meta has `spec_lock`: preflights that the archived files match the lock hashes (refuses otherwise), and appends the locked-spec contract (`fm_spec_ship_contract` in `bin/fm-spec-lib.sh`) after the delivery contract to `ship-instructions.md` and `brief.md`. |
+| `bin/fm-dod-lib.sh` | changed | `fm_dod_block` is unchanged; the acceptance-last requirement comes from the locked-spec contract instead. `fm_dod_accept_ship_done` calls `fm_dod_spec_gate` immediately after `fm_dod_should_gate_ship_done` and before every early acceptance return. |
 | `bin/fm-pr-check.sh` | changed | Its forge-head shortcut that skips `fm_dod_accept_ship_done` does not apply to a locked task. |
 | `scout-completion` skill, `captain-hold-lifecycle` skill, `AGENTS.md` section 7 | changed | The skills own the hold, relay, release-approval, iteration, and re-approval procedure; `AGENTS.md` gains one pointer line. |
 | `docs/spec-gate.md` | new | Operator guide: when to use a spec scout, registering `acceptance=`, and per-runner entrypoint examples; formats are linked to their script owners, not restated. Classified in `docs/documentation-audiences.json`. |
@@ -100,7 +100,7 @@ The entrypoint contract: invoked from the worktree root with one argument, the a
 
 ```json
 { "version": 1, "task": "<id>", "commit": "<scout HEAD sha>", "approved_at": 1791400000,
-  "approval": "<pointer to the captain-hold release record>",
+  "approval": "captain-hold:<hold-id> sha256:<sha of the decision file>",
   "files":     [ { "path": "features/accounts.feature", "sha256": "..." } ],
   "scenarios": [
     { "uri": "features/accounts.feature", "line": 12, "name": "Customer signs up with email", "steps": 4 },
@@ -108,6 +108,8 @@ The entrypoint contract: invoked from the worktree root with one argument, the a
 ```
 
 `steps` counts the scenario's own steps plus every `Background:` step that applies to it (feature-level, and rule-level inside a `Rule:`); outline rows additionally carry `outline_line` and a 1-based `ordinal`.
+
+The task's meta `spec_lock=` holds the absolute path of `data/<id>/spec-lock.json`, and the acceptance record is always the sibling `acceptance.json` of that lock.
 
 Re-approval moves the previous lock and spec directory to `spec-lock.<n>.json` and `spec.<n>/`; the unnumbered ones are authoritative.
 
@@ -157,7 +159,7 @@ A refused gated done is retried from the acceptance step, not re-implemented, un
 
 ## Failure handling
 
-- `fm-spec.sh approve` refuses: no feature files at the scout HEAD; uncommitted feature changes; a missing or unreadable scout worktree (with the reason, and before writing anything); no newest captain-hold release record.
+- `fm-spec.sh approve` refuses: no feature files at the scout HEAD; uncommitted feature changes; a missing or unreadable scout worktree (with the reason, and before writing anything); a captain-hold release that `fm-captain-hold.sh answer` rejects, such as a newest record with another mode.
 - `fm-promote.sh` refuses a locked task whose archived files do not match the lock.
 - `fm-acceptance.sh run` refuses a dirty tree, a missing recorded entrypoint, or a non-executable entrypoint.
 - Required tools are `jq` and `sha256sum` or `shasum`, both existing firstmate dependencies.
@@ -178,8 +180,8 @@ A pane-per-task placement would be new adapter capability with restart-recovery 
 
 New suites, all through public interfaces:
 
-- `tests/fm-spec-lib.test.sh`: scenario parsing (plain, `Example:`, multi-table outlines, `Rule:`, tags, comments, docstrings mentioning "Scenario"), URI normalization for each form, the status map including `ambiguous` and unknown values, and every gate refusal plus the pass case.
-- `tests/fm-spec.test.sh`: approve refusals (no files, dirty, missing worktree, no release record, default-mode answer instead of release), archiving and locking, meta write, re-approval archiving, and `show`.
+- `tests/fm-spec-lib.test.sh`: scenario parsing (plain, `Example:`, multi-table outlines, `Rule:`, tags, comments, docstrings mentioning "Scenario"), URI normalization for each form, the status map including `ambiguous` and unknown values, every gate refusal plus the pass case, and the `fm_spec_ship_contract` text.
+- `tests/fm-spec.test.sh`: approve refusals (no files, dirty, missing worktree, a rejected release such as a default-mode answer), the release-approval sequence through a fake captain-hold binary (`FM_CAPTAIN_HOLD_BIN`) that records the `answer <hold> --decision-file <words> --release` call, archiving and locking, the lock's `approval` field, meta write, re-approval archiving, and `show`.
 - `tests/fm-acceptance.test.sh`: a fake entrypoint replaying captured cucumber-js fixtures (and godog and Cucumber-JVM where captured) including outlines, Rule blocks, ambiguous and pending steps, an outline-line-only shape, and a step-omitting shape; non-zero exit with JSON; missing JSON; dirty tree; missing entrypoint.
 
 Extended suites:
@@ -189,10 +191,11 @@ Extended suites:
 - `tests/fm-spawn*` (the suite owning brief agreement): entrypoint disagreement refusal.
 - `tests/fm-task-delivery.test.sh`: promotion with a lock appends the contract to both instruction files and refuses mismatched archives; promotion without a lock is unchanged.
 - `tests/fm-dod-lib.test.sh`, `tests/fm-crew-state.test.sh`, `tests/fm-pr-check-security.test.sh`, and the `fm-inactive-reconcile` suite: a locked task's gated done is refused through the recorded-PR path, the Gerrit path, the reachability path, and the `fm-pr-check.sh` forge-head shortcut; the pre-validation done stays ungated; unlocked ships behave exactly as before.
-- `tests/fm-captain-hold-lifecycle.test.sh`: the hold, release-approval, and re-approval sequence for a spec scout.
-- An end-to-end fixture test in a throwaway git repo: approve, promote, restore, record, and gate acceptance, runnable in CI without a real runner.
+- `tests/fm-spec-e2e.test.sh`: an end-to-end fixture test in a throwaway git repo: approve, promote, restore, record, and gate acceptance, runnable in CI without a real runner.
 
-Manual evidence, not CI: a throwaway project with a small cucumber-js suite taken through the full lifecycle on the Herdr backend, and one secondmate-owned spec scout.
+`tests/fm-captain-hold-lifecycle.test.sh` is not extended, because the release-approval sequence is covered by `tests/fm-spec.test.sh` through the fake captain-hold binary.
+
+Manual evidence, not CI: a throwaway project with a small cucumber-js suite taken through the full lifecycle on the Herdr backend, one secondmate-owned spec scout, and the real `fm-captain-hold.sh` release-approval check in Task 12 of `docs/superpowers/plans/2026-10-12-spec-gate.md`.
 
 ## First consumer
 
