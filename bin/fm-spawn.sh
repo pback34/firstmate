@@ -3352,6 +3352,24 @@ if [ "$KIND" = ship ]; then
     echo "notice: $ID ships branch=$BRANCH while $PROJ_NAME registers the ship-branch prefix '$STANDING_BRANCH' (branch $STANDING_BRANCH$ID) - the task's branch and PR will read as firstmate-authored; proceed only on a current explicit captain instruction or an intake judgment you can state" >&2
   fi
 fi
+# A spec scout's brief names the acceptance entrypoint it was rendered for. The
+# spawn must agree with the entrypoint the project registers now, and a registry
+# refusal stops the spawn rather than reading as an empty entrypoint.
+if [ "$KIND" = scout ]; then
+  PROJ_NAME=$(basename "$PROJ_ABS")
+  BRIEF_ACCEPTANCE=$(sed -n 's/^Acceptance entrypoint: //p' "$BRIEF" | head -n 1)
+  if [ -n "$BRIEF_ACCEPTANCE" ]; then
+    if ! STANDING_ACCEPTANCE=$("$FM_ROOT/bin/fm-project-mode.sh" --acceptance "$PROJ_NAME" 2>/dev/null); then
+      "$FM_ROOT/bin/fm-project-mode.sh" --acceptance "$PROJ_NAME" >/dev/null || true
+      echo "error: $ID cannot launch: the registry entry for $PROJ_NAME does not resolve to an acceptance entrypoint (see the refusal above); correct data/projects.md and spawn again" >&2
+      exit 1
+    fi
+    if [ "$BRIEF_ACCEPTANCE" != "$STANDING_ACCEPTANCE" ]; then
+      echo "error: acceptance entrypoint mismatch for $ID: the brief says $BRIEF_ACCEPTANCE but $PROJ_NAME registers '${STANDING_ACCEPTANCE}'; re-render the brief from bin/fm-project-mode.sh --acceptance $PROJ_NAME" >&2
+      exit 1
+    fi
+  fi
+fi
 
 BRIEF_DIR_REAL=$(cd "$(dirname "$BRIEF")" && pwd -P)
 BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"

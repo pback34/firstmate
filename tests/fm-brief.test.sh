@@ -1033,6 +1033,39 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+# A spec scout's brief carries its registered acceptance entrypoint as one
+# machine-readable line and the spec deliverable section. Each refusal names what
+# is missing, and a plain scout brief carries neither.
+test_spec_scout_scaffold_and_refusals() {
+  local out brief entry
+  FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" spec-scout-s1 alpha --scout --spec --acceptance bin/acceptance >/dev/null 2>&1 \
+    || fail "spec scout brief failed"
+  brief="$BRIEF_HOME/data/spec-scout-s1/brief.md"
+  assert_present "$brief" "spec scout brief was not scaffolded"
+  entry=$(sed -n 's/^Acceptance entrypoint: //p' "$brief")
+  [ "$entry" = "bin/acceptance" ] || fail "spec scout brief must carry exactly one 'Acceptance entrypoint: bin/acceptance' line (got '$entry')"
+  assert_grep "# Spec deliverable" "$brief" "spec scout brief missing the spec section"
+  assert_grep "fm-spec.sh show spec-scout-s1" "$brief" "spec scout must paste its scenarios from fm-spec.sh show"
+
+  out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" spec-scout-s2 alpha --scout --spec 2>&1) \
+    && fail "--spec without --acceptance must refuse"
+  assert_contains "$out" "needs both --spec and --acceptance" "--spec without --acceptance did not name the pair"
+
+  out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" spec-scout-s3 alpha --mode direct-PR --spec --acceptance bin/acceptance 2>&1) \
+    && fail "--spec on a ship brief must refuse"
+  assert_contains "$out" "apply only to scout briefs" "--spec on a ship brief did not name the scout-only rule"
+
+  out=$(FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" spec-scout-s4 alpha --scout --spec --acceptance /abs/run 2>&1) \
+    && fail "an absolute acceptance entrypoint must refuse"
+  assert_contains "$out" "repo-relative path" "an absolute acceptance entrypoint did not name the relative-path rule"
+
+  FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" plain-scout-p1 alpha --scout >/dev/null 2>&1 \
+    || fail "plain scout brief failed"
+  assert_no_grep "Acceptance entrypoint:" "$BRIEF_HOME/data/plain-scout-p1/brief.md" \
+    "a plain scout brief must not carry an acceptance entrypoint"
+  pass "fm-brief: spec scout briefs carry the entrypoint line and refuse malformed pairs"
+}
+
 # Contract: a waiting worker spends no turns. A decision wait ends the turn, an
 # external wait sleeps in one bounded blocking shell command sized per harness,
 # and a waiting worker neither polls its inbox nor polls a pipeline between holds.
@@ -1490,6 +1523,7 @@ test_pause_verb_override_renders_all_brief_scaffolds
 test_ship_and_scout_teach_validation_round_pause
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
+test_spec_scout_scaffold_and_refusals
 test_scout_lavish_line_follows_presentation_floor
 test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
