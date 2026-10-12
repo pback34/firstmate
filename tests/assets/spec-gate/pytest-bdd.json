@@ -1,0 +1,240 @@
+[
+  {
+    "keyword": "Feature",
+    "uri": "features/demo.feature",
+    "name": "Demo",
+    "id": "features/demo.feature",
+    "line": 2,
+    "description": "",
+    "language": "en",
+    "tags": [
+      {
+        "name": "acct",
+        "line": 1
+      }
+    ],
+    "elements": [
+      {
+        "keyword": "Scenario",
+        "id": "test_plain_passes",
+        "name": "plain passes",
+        "line": 7,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 8,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Example",
+        "id": "test_inside_rule_undefined",
+        "name": "inside rule undefined",
+        "line": 11,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Scenario Outline",
+        "id": "test_outline_n[1]",
+        "name": "outline 1",
+        "line": 14,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "count 1",
+            "line": 15,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Scenario Outline",
+        "id": "test_outline_n[2]",
+        "name": "outline 2",
+        "line": 14,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "count 2",
+            "line": 15,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "failed",
+              "error_message": "fixturefunc = <function count at 0x79385bb53100>\nrequest = <FixtureRequest for <Function test_outline_n[2]>>, kwargs = {'n': 2}\n\n    def call_fixture_func(\n        fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs\n    ) -> FixtureValue:\n        if inspect.isgeneratorfunction(fixturefunc):\n            fixturefunc = cast(Callable[..., Generator[FixtureValue]], fixturefunc)\n            generator = fixturefunc(**kwargs)\n            try:\n                fixture_result = next(generator)\n            except StopIteration:\n                raise ValueError(f\"{request.fixturename} did not yield a value\") from None\n            finalizer = functools.partial(_teardown_yield_fixture, fixturefunc, generator)\n            request.addfinalizer(finalizer)\n        else:\n            fixturefunc = cast(Callable[..., FixtureValue], fixturefunc)\n>           fixture_result = fixturefunc(**kwargs)\n                             ^^^^^^^^^^^^^^^^^^^^^\n\n.venv/lib/python3.13/site-packages/_pytest/fixtures.py:1005: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nn = 2\n\n    @given(parsers.parse(\"count {n:d}\"))\n    def count(n):\n>       assert n != 2\nE       assert 2 != 2\n\ntest_demo.py:8: AssertionError"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Scenario Outline",
+        "id": "test_outline_n[3]",
+        "name": "outline 3",
+        "line": 14,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "count 3",
+            "line": 15,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Scenario",
+        "id": "test_ambiguous_one",
+        "name": "ambiguous one",
+        "line": 26,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "dup step",
+            "line": 27,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      },
+      {
+        "keyword": "Scenario",
+        "id": "test_pending_one",
+        "name": "pending one",
+        "line": 29,
+        "description": "",
+        "tags": [],
+        "type": "scenario",
+        "steps": [
+          {
+            "keyword": "Given",
+            "name": "a shop",
+            "line": 5,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "keyword": "Given",
+            "name": "pend",
+            "line": 30,
+            "match": {
+              "location": ""
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

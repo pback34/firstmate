@@ -1,0 +1,293 @@
+[
+  {
+    "description": "",
+    "elements": [
+      {
+        "description": "",
+        "id": "demo;plain-passes",
+        "keyword": "Scenario",
+        "line": 7,
+        "name": "plain passes",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 8,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;inside-rule-undefined",
+        "keyword": "Example",
+        "line": 11,
+        "name": "inside rule undefined",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 12,
+            "name": "nothing defined here",
+            "result": {
+              "status": "undefined"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;outline-1",
+        "keyword": "Scenario Outline",
+        "line": 19,
+        "name": "outline 1",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 15,
+            "name": "count 1",
+            "match": {
+              "location": "features/step_definitions/steps.js:3"
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;outline-2",
+        "keyword": "Scenario Outline",
+        "line": 20,
+        "name": "outline 2",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 15,
+            "name": "count 2",
+            "match": {
+              "location": "features/step_definitions/steps.js:3"
+            },
+            "result": {
+              "status": "failed",
+              "error_message": "Error: boom (stack trimmed)"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;outline-3",
+        "keyword": "Scenario Outline",
+        "line": 24,
+        "name": "outline 3",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 15,
+            "name": "count 3",
+            "match": {
+              "location": "features/step_definitions/steps.js:3"
+            },
+            "result": {
+              "status": "passed"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;ambiguous-one",
+        "keyword": "Scenario",
+        "line": 26,
+        "name": "ambiguous one",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 27,
+            "name": "dup step",
+            "result": {
+              "status": "ambiguous"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      },
+      {
+        "description": "",
+        "id": "demo;subscriptions;pending-one",
+        "keyword": "Scenario",
+        "line": 29,
+        "name": "pending one",
+        "steps": [
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 5,
+            "name": "a shop",
+            "match": {
+              "location": "features/step_definitions/steps.js:2"
+            },
+            "result": {
+              "status": "passed"
+            }
+          },
+          {
+            "arguments": [],
+            "keyword": "Given ",
+            "line": 30,
+            "name": "pend",
+            "match": {
+              "location": "features/step_definitions/steps.js:6"
+            },
+            "result": {
+              "status": "pending"
+            }
+          }
+        ],
+        "tags": [
+          {
+            "name": "@acct",
+            "line": 1
+          }
+        ],
+        "type": "scenario"
+      }
+    ],
+    "id": "demo",
+    "line": 2,
+    "keyword": "Feature",
+    "name": "Demo",
+    "tags": [
+      {
+        "name": "@acct",
+        "line": 1
+      }
+    ],
+    "uri": "features/demo.feature"
+  }
+]
