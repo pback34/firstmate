@@ -765,8 +765,8 @@ test_direct_pr_unpushed_commit_refuses_registration() {
 # spec scout does, so the copy's HEAD carries the locked feature unchanged.
 commit_demo_spec() {  # <case-dir>
   mkdir -p "$1/wt/features" "$1/spec/features"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$1/wt/features/demo.feature"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$1/spec/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$1/wt/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$1/spec/features/demo.feature"
   git -C "$1/wt" add features
   git -C "$1/wt" commit -q -m spec
 }

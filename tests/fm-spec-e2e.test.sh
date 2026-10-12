@@ -12,7 +12,7 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-spec-e2e)
 fm_git_identity fmtest fmtest@example.invalid
-FIX="$ROOT/tests/assets/spec-gate"
+FIX="$ROOT/tests/fixtures/spec-gate"
 
 test_end_to_end_spec_gate() {
   local home wt repo id=e2e1 lock restore reason meta

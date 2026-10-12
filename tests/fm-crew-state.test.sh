@@ -1202,8 +1202,8 @@ test_locked_ci_ready_done_is_refused_without_acceptance() {
   d=$(new_case locked-ci-ready)
   make_repo_on_branch "$d/wt" fm/feat-lockedci
   mkdir -p "$d/wt/features" "$d/spec/features"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$d/wt/features/demo.feature"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$d/spec/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$d/wt/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$d/spec/features/demo.feature"
   git -C "$d/wt" add features
   git -C "$d/wt" commit -q -m spec
   # Pushing the branch makes the copy's HEAD reachable outside the worktree.

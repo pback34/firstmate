@@ -581,8 +581,8 @@ spec_locked_task() {  # <name>; sets WT REPO META STATE_DIR LOCK
   local dir="$TMP_ROOT/$1-data"
   fm_git_worktree "$REPO" "$WT" "fm/$1"
   mkdir -p "$WT/features" "$dir/spec/features" "$STATE_DIR"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$WT/features/demo.feature"
-  cp "$ROOT/tests/assets/spec-gate/demo.feature" "$dir/spec/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$WT/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$dir/spec/features/demo.feature"
   git -C "$WT" add features
   git -C "$WT" commit -q -m spec
   git -C "$WT" push -q origin "fm/$1"
@@ -593,7 +593,7 @@ spec_locked_task() {  # <name>; sets WT REPO META STATE_DIR LOCK
 }
 
 passing_record() {
-  fm_spec_record_from_cucumber "$ROOT/tests/assets/spec-gate/cucumber-js-11.json" "$WT" "$(git -C "$WT" rev-parse HEAD)" bin/acceptance 0 1 \
+  fm_spec_record_from_cucumber "$ROOT/tests/fixtures/spec-gate/cucumber-js-11.json" "$WT" "$(git -C "$WT" rev-parse HEAD)" bin/acceptance 0 1 \
     | jq -c '.scenarios |= map(.status = "passed")' > "${LOCK%/*}/acceptance.json"
 }
 
