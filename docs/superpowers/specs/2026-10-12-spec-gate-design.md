@@ -22,7 +22,8 @@ The spec gate brings that separation to firstmate without adopting SwarmForge's 
 - A ship task promoted from an approved spec cannot have a gated `done:` accepted unless every approved scenario passes at the named head.
 - Nobody, including firstmate, can weaken an approved spec without the captain's recorded re-approval.
 - The spec lives in the project repo, reviewable in the PR, and outlives the task.
-- Works for runners that emit Cucumber JSON; fixtures prove cucumber-js, godog, Cucumber-JVM, and pytest-bdd (`--cucumberjson`).
+- Works for runners whose Cucumber JSON is proven faithful by captured fixtures: cucumber-js is proven; godog and Cucumber-JVM are verified in the plan's first task or documented as unverified.
+- pytest-bdd is unsupported: a 2026-10-12 probe showed its `--cucumberjson` omits undefined steps and reports `pytest.skip` steps as `passed`, a false pass the gate cannot detect.
 
 ## Non-goals
 
@@ -89,7 +90,7 @@ Rules:
 
 `data/projects.md` bracket tokens gain `acceptance=<path>`, an executable path relative to the project root, containing no spaces.
 Like `forge=`, it is a captain-confirmed project fact, not a per-task choice; firstmate resolves it with `fm-project-mode.sh --acceptance` and passes it explicitly to `fm-brief.sh`.
-The entrypoint contract: invoked from the worktree root with one argument, the absolute path where it must write a Cucumber JSON report; its exit status is informational.
+The entrypoint contract: invoked from the worktree root with one argument, the absolute path where it must write a Cucumber JSON report; its exit status is recorded, and only a zero exit can pass the gate.
 
 ## Data formats
 
@@ -101,27 +102,34 @@ The entrypoint contract: invoked from the worktree root with one argument, the a
 { "version": 1, "task": "<id>", "commit": "<scout HEAD sha>", "approved_at": 1791400000,
   "approval": "<pointer to the captain-hold release record>",
   "files":     [ { "path": "features/accounts.feature", "sha256": "..." } ],
-  "scenarios": [ { "uri": "features/accounts.feature", "line": 12, "name": "Customer signs up with email" } ] }
+  "scenarios": [
+    { "uri": "features/accounts.feature", "line": 12, "name": "Customer signs up with email", "steps": 4 },
+    { "uri": "features/accounts.feature", "line": 31, "name": "Plan <plan>", "steps": 3, "outline_line": 25, "ordinal": 1 } ] }
 ```
+
+`steps` counts the scenario's own steps plus every `Background:` step that applies to it (feature-level, and rule-level inside a `Rule:`); outline rows additionally carry `outline_line` and a 1-based `ordinal`.
 
 Re-approval moves the previous lock and spec directory to `spec-lock.<n>.json` and `spec.<n>/`; the unnumbered ones are authoritative.
 
-Scenario identity is `(uri, line)`, with `uri` normalized to a repo-relative path by stripping `file:` and `classpath:` schemes, converting absolute paths under the worktree to relative ones, and normalizing separators.
+Scenario identity is `(uri, line)`, with the outline fallback below, and with `uri` normalized to a repo-relative path by stripping `file:` and `classpath:` schemes, converting absolute paths under the worktree to relative ones, and normalizing separators.
 Line numbers are stable because the gate requires locked files to be byte-identical.
-The Scenario Outline rule (identity at each example row's line, or at the outline line plus ordinal) is decided by the real-runner fixtures captured in the plan's first task and then fixed for all runners by normalization.
-The parser recognizes `Scenario:`, `Example:`, `Scenario Outline:`, `Scenario Template:`, `Examples:`/`Scenarios:` tables, and `Rule:`, and ignores tags, comments, docstrings, and `Background:`.
+Runners disagree on Scenario Outline rows: cucumber-js reports each example row at the row's own line, while pytest-bdd reports every row at the outline's line (2026-10-12 probe).
+The lock therefore records each outline row with its row `line`, its `outline_line`, and its `ordinal` among that outline's rows in document order, and a recorded element matches a row by row line or, failing that, by outline line and its order of appearance among elements reported at that line.
+The parser recognizes `Scenario:`, `Example:`, `Scenario Outline:`, `Scenario Template:`, `Examples:`/`Scenarios:` tables, `Rule:`, and `Background:` (for step counts), counts lines starting with a step keyword (`Given`, `When`, `Then`, `And`, `But`, `*`), and ignores tags, comments, data tables, and docstring contents.
 
 `data/<id>/acceptance.json`, written by `fm-acceptance.sh run`:
 
 ```json
-{ "version": 1, "head": "<sha>", "ran_at": 1791400500, "entrypoint": "bin/acceptance",
-  "scenarios": [ { "uri": "features/accounts.feature", "line": 12, "name": "...", "status": "passed" } ],
+{ "version": 1, "head": "<sha>", "ran_at": 1791400500, "entrypoint": "bin/acceptance", "exit": 0,
+  "scenarios": [ { "uri": "features/accounts.feature", "line": 12, "name": "...", "steps": 4, "status": "passed" } ],
   "counts": { "passed": 14, "failed": 0, "undefined": 0, "pending": 0, "skipped": 0, "ambiguous": 0, "unknown": 0 } }
 ```
 
 The status map is closed: `passed`, `failed`, `undefined`, `pending`, `skipped`, `ambiguous`, and `unknown` for any other runner status.
 A scenario's status is the worst of its steps and hooks, ordered failed, ambiguous, unknown, undefined, pending, skipped, passed; only `passed` passes.
-A non-zero entrypoint exit with readable JSON still records; no readable JSON means no record is written and the command fails.
+A recorded scenario with fewer steps than the locked file defines for it (its background steps plus its own) gets status `unknown`, because some runners omit undefined steps instead of reporting them.
+Recorded step counts exclude hook entries (elements of `before`/`after`, and `steps` entries that are `hidden: true` or have keyword `Before`/`After`), while hook statuses still contribute to the scenario's status.
+A non-zero entrypoint exit with readable JSON still records, with `exit` stored in the record; no readable JSON means no record is written and the command fails.
 
 ## Gate
 
@@ -135,6 +143,7 @@ The gate's named head is the worker copy's `HEAD`; a locked task whose copy is m
 | Worker copy missing or HEAD unresolvable | `named head cannot be verified for a locked spec` |
 | A locked file absent or with a different hash at the named head | `locked spec changed: <paths>; needs captain re-approval` |
 | No acceptance record, or its `head` differs from the named head | `acceptance run missing` or `acceptance run is for <sha>, not head <sha>; rerun fm-acceptance.sh as the last step` |
+| The record's entrypoint `exit` is non-zero | `acceptance entrypoint exited <n>` |
 | A locked scenario absent from the record | `scenarios not run: <uri:line ...>` |
 | Any recorded scenario not `passed` | `scenarios not passing: <uri:line status ...>` |
 
@@ -171,7 +180,7 @@ New suites, all through public interfaces:
 
 - `tests/fm-spec-lib.test.sh`: scenario parsing (plain, `Example:`, multi-table outlines, `Rule:`, tags, comments, docstrings mentioning "Scenario"), URI normalization for each form, the status map including `ambiguous` and unknown values, and every gate refusal plus the pass case.
 - `tests/fm-spec.test.sh`: approve refusals (no files, dirty, missing worktree, no release record, default-mode answer instead of release), archiving and locking, meta write, re-approval archiving, and `show`.
-- `tests/fm-acceptance.test.sh`: a fake entrypoint replaying captured cucumber-js, godog, Cucumber-JVM, and pytest-bdd fixtures including outlines; non-zero exit with JSON; missing JSON; dirty tree; missing entrypoint.
+- `tests/fm-acceptance.test.sh`: a fake entrypoint replaying captured cucumber-js fixtures (and godog and Cucumber-JVM where captured) including outlines, Rule blocks, ambiguous and pending steps, an outline-line-only shape, and a step-omitting shape; non-zero exit with JSON; missing JSON; dirty tree; missing entrypoint.
 
 Extended suites:
 
