@@ -127,10 +127,71 @@ test_lock_fails_closed_on_dangling_or_symlinked_feature() {
   pass "lock refuses a dangling or symlinked feature file"
 }
 
+record() {  # <cucumber-json> [<worktree>] [<exit>]
+  fm_spec_record_from_cucumber "$1" "${2:-$TMP_ROOT/wt}" abc123 bin/acceptance "${3:-0}" 1791400500
+}
+
+test_record_reads_cucumber_js_statuses() {
+  local rec
+  rec=$(record "$FIX/cucumber-js-11.json")
+  assert_equals "7:passed 11:undefined 19:passed 20:failed 24:passed 26:ambiguous 29:pending" \
+    "$(printf '%s' "$rec" | jq -r '[.scenarios[] | "\(.line):\(.status)"] | join(" ")')" "per-scenario status"
+  assert_equals "2 2 2 2 2 2 2" "$(printf '%s' "$rec" | jq -r '[.scenarios[].steps] | map(tostring) | join(" ")')" "background steps are counted"
+  assert_equals '{"passed":3,"failed":1,"undefined":1,"pending":1,"skipped":0,"ambiguous":1,"unknown":0}' \
+    "$(printf '%s' "$rec" | jq -c '.counts')" "counts"
+  assert_equals "abc123 0 bin/acceptance" "$(printf '%s' "$rec" | jq -r '"\(.head) \(.exit) \(.entrypoint)"')" "header"
+  pass "record reads cucumber-js statuses"
+}
+
+test_record_keeps_pytest_bdd_shape_for_the_gate() {
+  local rec
+  rec=$(record "$FIX/pytest-bdd.json")
+  assert_equals "7 11 14 14 14 26 29" "$(printf '%s' "$rec" | jq -r '[.scenarios[].line] | map(tostring) | join(" ")')" "outline rows at the outline line"
+  assert_equals 1 "$(printf '%s' "$rec" | jq '.scenarios[1].steps')" "the omitted undefined step is visible as a short step count"
+  pass "record keeps the pytest-bdd shape for the gate"
+}
+
+test_record_normalizes_uri_forms() {
+  local wt real link u got
+  wt="$TMP_ROOT/wt"
+  mkdir -p "$wt"
+  real=$(cd "$wt" && pwd -P)
+  link="$TMP_ROOT/wt-link"
+  ln -s "$real" "$link"
+  for u in "file://$real/features/demo.feature" "classpath:features/demo.feature" "$real/features/demo.feature" \
+    'features\demo.feature' "./features/demo.feature"; do
+    jq --arg u "$u" 'map(.uri = $u)' "$FIX/cucumber-js-11.json" > "$TMP_ROOT/u.json"
+    got=$(fm_spec_record_from_cucumber "$TMP_ROOT/u.json" "$real" h ep 0 1 | jq -r '.scenarios[0].uri')
+    assert_equals "features/demo.feature" "$got" "uri $u normalizes"
+  done
+  jq --arg u "$real/features/demo.feature" 'map(.uri = $u)' "$FIX/cucumber-js-11.json" > "$TMP_ROOT/u.json"
+  got=$(fm_spec_record_from_cucumber "$TMP_ROOT/u.json" "$link" h ep 0 1 | jq -r '.scenarios[0].uri')
+  assert_equals "features/demo.feature" "$got" "a symlinked worktree argument still strips the runner's physical path"
+  pass "record normalizes uri forms"
+}
+
+test_record_merges_backgrounds_hides_hooks_and_maps_unknown() {
+  local rec
+  cat > "$TMP_ROOT/jvm.json" <<'EOF'
+[{"uri":"features/demo.feature","elements":[
+ {"type":"background","line":4,"steps":[{"keyword":"Given ","result":{"status":"passed"}}]},
+ {"type":"scenario","line":7,"name":"plain passes","steps":[{"keyword":"Given ","result":{"status":"passed"}},{"keyword":"After","hidden":true,"result":{"status":"failed"}}]},
+ {"type":"scenario","line":26,"name":"x","steps":[{"keyword":"Given ","result":{"status":"Flaky"}}]}]}]
+EOF
+  rec=$(record "$TMP_ROOT/jvm.json")
+  assert_equals "7:2:failed 26:1:unknown" "$(printf '%s' "$rec" | jq -r '[.scenarios[] | "\(.line):\(.steps):\(.status)"] | join(" ")')" \
+    "background merged into the next scenario, hidden hook excluded from steps but failing it, unmapped status is unknown"
+  pass "record merges backgrounds, hides hooks, and maps unknown statuses"
+}
+
 test_parser_matches_the_probe_feature
 test_parser_ignores_docstrings_comments_tags_and_step_tables
 test_parser_treats_crlf_like_lf
 test_lock_hashes_files_and_lists_scenarios
 test_lock_fails_closed_on_missing_or_empty_features
 test_lock_fails_closed_on_dangling_or_symlinked_feature
+test_record_reads_cucumber_js_statuses
+test_record_keeps_pytest_bdd_shape_for_the_gate
+test_record_normalizes_uri_forms
+test_record_merges_backgrounds_hides_hooks_and_maps_unknown
 echo "all fm-spec-lib tests passed"
