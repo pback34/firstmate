@@ -1897,6 +1897,19 @@ if [ "$RELAUNCH" -eq 1 ]; then
         ;;
     esac
   fi
+  # A `dead` read is only as trustworthy as the server this seat reached: the
+  # pane can exist there as a bare shell while the real agent runs on another
+  # server in the same worktree. The process table does not depend on which
+  # server answered, so an agent process owning the worktree refuses a `dead`
+  # endpoint too. (A `missing` one was checked inside the absence proof above.)
+  # The dead pane's own shell classifies as a shell and never blocks.
+  if [ "$RELAUNCH_STATE" = dead ] && declare -F fm_agent_process_in_worktree >/dev/null 2>&1; then
+    RELAUNCH_OCCUPANT=$(fm_agent_process_in_worktree "$(fm_meta_get "$RELAUNCH_META" worktree)") \
+      && {
+        echo "error: task $ID's recorded endpoint $RELAUNCH_TARGET reads 'dead', but a live agent process (pid ${RELAUNCH_OCCUPANT%%$'\t'*}, ${RELAUNCH_OCCUPANT#*$'\t'}) still has its working directory in the task's worktree. Refusing to launch a second agent into a worktree an agent already owns" >&2
+        exit 1
+      }
+  fi
   case "$RELAUNCH_STATE" in
     dead) ;;
     missing) RELAUNCH_REBIND=1 ;;

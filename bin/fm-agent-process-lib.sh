@@ -128,8 +128,10 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
 # depend on which Herdr server a seat reached. Linux reads /proc/<pid>/cwd;
 # macOS has no /proc, so it asks `lsof -d cwd`. FM_WORKTREE_PROC_SOURCE (proc or
 # lsof) pins the source for tests, FM_LSOF_BIN and FM_PS_BIN name the tools.
-# The scanning process and its own parent shells are never counted, so a seat
-# that happens to run from inside the worktree does not block itself.
+# The scanning shell itself is skipped, and shells never classify as agents, so
+# a seat that happens to run from inside the worktree does not block itself
+# through its own shell. A caller that is itself an agent running from inside
+# the worktree is found like any other.
 fm_agent_process_in_worktree() {  # <worktree> -> "<pid>\t<name>"
   local wt=${1:-} source=${FM_WORKTREE_PROC_SOURCE:-} pid cwd name argv0 args lsof_bin ps_bin
   [ -n "$wt" ] && [ -d "$wt" ] || return 2
@@ -140,9 +142,23 @@ fm_agent_process_in_worktree() {  # <worktree> -> "<pid>\t<name>"
   case "$source" in
     proc)
       [ -d /proc/self ] || return 2
-      for cwd in /proc/[0-9]*/cwd; do
-        pid=${cwd#/proc/}
-        pid=${pid%/cwd}
+      local glob candidates
+      # One find call pre-selects the processes whose cwd link points into the
+      # worktree (-lname is a glob, so its metacharacters are escaped); only
+      # those are classified. Reading every /proc/<pid>/cwd one process at a time
+      # costs a fork each and seconds on a busy host.
+      if command -v find >/dev/null 2>&1; then
+        glob=$(printf '%s' "$wt" | sed 's/[][*?\\]/\\&/g')
+        candidates=$(find /proc -maxdepth 2 -mindepth 2 -name cwd \( -lname "$glob" -o -lname "$glob/*" \) 2>/dev/null \
+          | sed -n 's|^/proc/\([0-9][0-9]*\)/cwd$|\1|p' | sort -n)
+      else
+        candidates=$(for cwd in /proc/[0-9]*/cwd; do
+          pid=${cwd#/proc/}; pid=${pid%/cwd}
+          cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+          case "$cwd" in "$wt"|"$wt"/*) printf '%s\n' "$pid" ;; esac
+        done)
+      fi
+      for pid in $candidates; do
         [ "$pid" != "$$" ] && [ "$pid" != "${BASHPID:-}" ] || continue
         cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
         case "$cwd" in "$wt"|"$wt"/*) ;; *) continue ;; esac

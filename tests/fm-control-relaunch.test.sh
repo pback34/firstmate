@@ -2668,6 +2668,63 @@ test_herdr_exit_refuses_when_a_live_agent_owns_the_worktree() {
   pass "fm-control exit: a live agent process in the worktree refuses endpoint-gone and is named"
 }
 
+test_herdr_relaunch_refuses_a_dead_pane_while_a_live_agent_owns_the_worktree() {
+  local dir out rc=0 log pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip occupied-dead rl83 || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # The pane this seat reads is a bare shell (`dead`), but the real agent runs on
+  # another server in the same worktree, so only the process table can see it.
+  rm -f "$dir/fake/herdr-stopped"
+  pid=$(start_fake_agent "$dir" claude)
+  out=$(run_spawn "$dir" rl83 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  log=$(cat "$dir/fake/herdr-log")
+  expect_code 1 "$rc" "a dead pane must not be adopted while an agent owns the worktree"$'\n'"$out"$'\n'"$log"
+  assert_contains "$out" "pid $pid" "the refusal must name the process that owns the worktree"
+  assert_contains "$out" "reads 'dead'" "the refusal must say which read it overrode"
+  assert_not_contains "$log" "send-text" "a refused relaunch must not type the launch brief into the pane"
+  [ "$(meta_field "$dir" rl83 window)" = 'fmlab:%7' ] || fail "a refused relaunch moved the recorded endpoint"
+  pass "reclaim: a dead pane is not adopted while a live agent process owns the worktree"
+}
+
+test_herdr_relaunch_adopts_a_dead_pane_when_only_its_shell_is_in_the_worktree() {
+  local dir out rc=0 pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip dead-shell-only rl84 || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  rm -f "$dir/fake/herdr-stopped"
+  pid=$(start_fake_agent "$dir" bash)
+  out=$(run_spawn "$dir" rl84 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  expect_code 0 "$rc" "a dead pane whose own shell sits in the worktree is the ordinary relaunch"$'\n'"$out"
+  pass "reclaim: a shell in the worktree never blocks adopting a dead pane"
+}
+
+test_herdr_relaunch_and_exit_refuse_when_the_process_table_cannot_be_read() {
+  local dir out rc=0
+  herdr_case_or_skip unreadable-table rl85 fmlab '%none' || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # No readable scan source is "not proven", never "no agent".
+  out=$(FM_WORKTREE_PROC_SOURCE=lsof FM_LSOF_BIN="$dir/no-such-lsof" run_spawn "$dir" rl85 --relaunch --harness claude) || rc=$?
+  expect_code 1 "$rc" "a relaunch must refuse when occupancy cannot be checked"$'\n'"$out"
+  assert_contains "$out" "process table could not be read" "the refusal should say why absence is unproven"
+  rc=0
+  out=$(FM_WORKTREE_PROC_SOURCE=lsof FM_LSOF_BIN="$dir/no-such-lsof" run_control "$dir" rl85 exit) || rc=$?
+  expect_code 1 "$rc" "exit must refuse when occupancy cannot be checked"$'\n'"$out"
+  assert_not_contains "$out" "endpoint-gone" "exit must not claim a stop it could not prove"
+  pass "reclaim: an unreadable process table leaves absence unproven, so both verbs refuse"
+}
+
 test_herdr_relaunch_proceeds_when_no_agent_owns_the_worktree() {
   local dir out rc=0 pid
   [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
@@ -2718,6 +2775,9 @@ PS
 test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause
 test_herdr_relaunch_refuses_when_a_live_agent_owns_the_worktree
 test_herdr_exit_refuses_when_a_live_agent_owns_the_worktree
+test_herdr_relaunch_refuses_a_dead_pane_while_a_live_agent_owns_the_worktree
+test_herdr_relaunch_adopts_a_dead_pane_when_only_its_shell_is_in_the_worktree
+test_herdr_relaunch_and_exit_refuse_when_the_process_table_cannot_be_read
 test_herdr_relaunch_proceeds_when_no_agent_owns_the_worktree
 test_worktree_occupancy_scan_reads_lsof_on_a_host_without_proc
 test_relaunch_reverifies_an_already_in_flight_item_instead_of_rewriting_it

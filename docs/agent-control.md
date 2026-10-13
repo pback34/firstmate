@@ -114,6 +114,8 @@ An unreachable endpoint can still hold the live agent a rebind would duplicate, 
   So in that state `exit` - which otherwise reads as a read-only inspection - leaves an idle herdr server behind.
   A pane read only answers for the server the seat reached, and two Herdr servers can disagree about one session name, so a second `missing` is also checked against the process table before it is believed.
   When a process that `fm_agent_process_classify` calls an agent has its working directory inside the task's recorded worktree (`/proc/<pid>/cwd` on Linux, `lsof -d cwd` on macOS), the verdict is `alive` with that pid as its reason, and `exit` and `relaunch` both refuse naming it.
+  If the process table cannot be read at all, absence stays unproven and both verbs refuse.
+  `relaunch` makes the same check before adopting a `dead` endpoint, because a `dead` read is only as good as the server the seat reached; the dead pane's own shell never blocks it.
 - **tmux cannot.** `list-windows -a` describes only the tmux server the *current process* addresses (its `TMUX_TMPDIR`/socket), and a task record carries no socket identity for its endpoint.
   A different but running server would answer "not anywhere" about a window it was never able to see, so a server-wide read cannot tell a destroyed window from one on a server this process cannot address.
   There is no read available that closes that gap, so tmux always refuses - for a renamed session, a moved window, a foreign socket, and a dead server alike.
