@@ -53,7 +53,7 @@ make_stubs() { # <dir> -> echoes fakebin dir
 set -u
 case "${1:-}" in
   send-keys)
-    [ "${FM_FAKE_TMUX_SEND_FAIL:-0}" = 1 ] && exit 1
+    [ "${FM_FAKE_TMUX_SEND_FAIL:-0}" = 1 ] && { echo "fake-tmux: can't find pane: fm-t1" >&2; exit 1; }
     shift
     literal=0
     while [ $# -gt 0 ]; do
@@ -239,7 +239,20 @@ test_failed_ring_is_still_sent() {
   [ -f "$dir/home/state/t1.inbox/001.msg" ] || fail "the steer was not recorded"
   assert_contains "$(cat "$err")" "watcher will re-ring" \
     "the failed-ring notice should point at the re-ring"
-  pass "fm-send inbox: a failed doorbell is still a durably sent steer"
+  # The notice names the failing step instead of discarding it, and the same
+  # reason is kept beside the record for whoever reads the inbox later.
+  assert_contains "$(cat "$err")" "doorbell did not reach sess:fm-t1 (" \
+    "the failed-ring notice should carry the reason in parentheses"
+  assert_contains "$(cat "$err")" "can't find pane" \
+    "the failed-ring notice should name what the backend reported"
+  assert_contains "$(cat "$dir/home/state/t1.inbox/.ring-last")" "rc=2" \
+    "the ring result should be recorded beside the inbox"
+  assert_contains "$(cat "$dir/home/state/t1.inbox/.ring-last")" "reason=" \
+    "the ring reason should be recorded beside the inbox"
+  run_send "$dir" "$dir/send2.err" -- t1 "a steer that rings fine"
+  [ ! -e "$dir/home/state/t1.inbox/.ring-last" ] \
+    || fail "a ring that landed should clear the stale failure reason"
+  pass "fm-send inbox: a failed doorbell is still a durably sent steer, and its reason is named and kept"
 }
 
 # Contract: a fire-and-forget record stays outside the re-ring ladder, so a

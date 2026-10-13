@@ -4419,6 +4419,22 @@ test_send_text_submit_detects_swallowed_enter() {
   pass "fm_backend_herdr_send_text_submit: reports 'pending' when agent_status stays idle and the composer still holds unsent text after retried Enters (swallowed)"
 }
 
+test_send_text_submit_records_why_it_reported_send_failed() {
+  local dir log resp fb out reasons
+  dir="$TMP_ROOT/submit-send-reason"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  reasons="$dir/reasons"
+  printf '{"result":{"agent":{"agent":"codex","agent_status":"idle"}}}\n' > "$resp/1.out"
+  printf 'herdr: pane closed\n' > "$resp/2.err"
+  printf '1\n' > "$resp/2.exit"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 FM_BACKEND_SEND_REASON_FILE="$reasons" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_text_submit default:w1:p2 "hello captain" 3 0.01 0.01' "$ROOT" 2>/dev/null )
+  [ "$out" = send-failed ] || fail "a failed literal send should report send-failed, got '$out'"
+  assert_contains "$(cat "$reasons" 2>/dev/null)" "typing the text into the pane failed" \
+    "a send-failed verdict should record which step refused when a reason file is named"
+  pass "fm_backend_herdr_send_text_submit: records the refusing step in the caller's reason file"
+}
+
 test_send_text_submit_replays_literal_send_stderr() {
   local dir log resp fb out err
   dir="$TMP_ROOT/submit-send-stderr"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -6055,6 +6071,7 @@ test_wait_for_working_treats_blocked_as_submit_active
 test_send_text_submit_detects_landed_send
 test_send_text_submit_detects_swallowed_enter
 test_send_text_submit_replays_literal_send_stderr
+test_send_text_submit_records_why_it_reported_send_failed
 test_send_text_submit_popup_autocomplete_requires_second_enter
 test_send_text_submit_refuses_confirming_enter_on_exit_picker
 test_blocked_submit_leaves_the_exit_picker_to_the_next_composer_read

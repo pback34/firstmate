@@ -275,6 +275,10 @@ test_ring_skips_dead_agent() {
   PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_TMUX_AGENT=zsh \
     inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
   [ "$rc" = 3 ] || fail "a dead agent should return 3 from the ring, got $rc"
+  if ! { grep -qx 'rc=3' "$state/t1.inbox/.ring-last" \
+    && grep -q '^reason=endpoint reads' "$state/t1.inbox/.ring-last"; }; then
+    fail "a skipped ring should leave its reason beside the inbox:"$'\n'"$(cat "$state/t1.inbox/.ring-last" 2>&1)"
+  fi
   [ ! -s "$log" ] || fail "a dead pane was typed into:"$'\n'"$(cat "$log")"
   [ -f "$rec" ] || fail "skipping the ring must leave the durable record in place"
   rc=0
@@ -287,6 +291,7 @@ test_ring_skips_dead_agent() {
   PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_TMUX_AGENT=claude \
     inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
   [ "$rc" = 0 ] || fail "a live agent should still be rung, got $rc"
+  [ ! -e "$state/t1.inbox/.ring-last" ] || fail "a ring that landed should clear the recorded reason"
   grep -qF 'Firstmate instruction waiting' "$log" || fail "a live agent did not receive the doorbell"
   : > "$log"
   rc=0

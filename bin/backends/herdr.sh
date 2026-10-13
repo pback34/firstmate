@@ -3449,6 +3449,15 @@ fm_backend_herdr_composer_clear() {  # <target> <text>
   return 1
 }
 
+# fm_backend_herdr_submit_reason: when a caller names FM_BACKEND_SEND_REASON_FILE,
+# append why a submit is about to report send-failed, so the caller can say which
+# proof or keystroke refused instead of only that something did. Stdout and
+# stderr are untouched; without the variable this does nothing.
+fm_backend_herdr_submit_reason() {  # <reason>
+  [ -z "${FM_BACKEND_SEND_REASON_FILE:-}" ] || printf '%s\n' "$1" >> "$FM_BACKEND_SEND_REASON_FILE" 2>/dev/null
+  return 0
+}
+
 fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep> <settle>
   local target=$1 text=$2 retries=$3 sleep_s=$4 settle=$5 i=0 verdict baseline confirm_sleep
   local raw_status footer_baseline='' allow_rendered=0 enter_sent=0 identity proof=0 content
@@ -3461,17 +3470,21 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
   if [ "${identity%%$'\t'*}" = claude ]; then
     proof=1
     content=$(fm_backend_herdr_composer_content "$target") \
-      || { printf 'send-failed'; return 0; }
-    [ -z "${content//[$' \t\r\n\v\f']/}" ] || { printf 'send-failed'; return 0; }
+      || { fm_backend_herdr_submit_reason "the composer could not be read before typing, so it was not proven empty"; printf 'send-failed'; return 0; }
+    [ -z "${content//[$' \t\r\n\v\f']/}" ] \
+      || { fm_backend_herdr_submit_reason "the composer already holds text, so typing was withheld"; printf 'send-failed'; return 0; }
   fi
-  fm_backend_herdr_send_literal "$target" "$text" || { printf 'send-failed'; return 0; }
+  fm_backend_herdr_send_literal "$target" "$text" \
+    || { fm_backend_herdr_submit_reason "typing the text into the pane failed"; printf 'send-failed'; return 0; }
   sleep "$settle"
   if [ "$proof" = 1 ]; then
     if ! content=$(fm_backend_herdr_composer_content "$target") \
       || ! fm_backend_herdr_composer_payload_shown "$text" "$content"; then
       if fm_backend_herdr_composer_clear "$target" "$text"; then
+        fm_backend_herdr_submit_reason "the typed text was not read back from the pane, so Enter was withheld and the composer cleared"
         printf 'send-failed'
       else
+        fm_backend_herdr_submit_reason "the typed text was not read back from the pane and the composer could not be confirmed cleared"
         printf 'unknown'
       fi
       return 0
@@ -3493,6 +3506,7 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
     elif [ "$enter_sent" -eq 0 ]; then
       i=$((i + 1))
       if [ "$i" -ge "$retries" ]; then
+        fm_backend_herdr_submit_reason "the Enter key could not be sent after $retries attempts"
         printf 'send-failed'
         return 0
       fi
@@ -3540,6 +3554,7 @@ fm_backend_herdr_send_text_submit() {  # <target> <text> <retries> <enter-sleep>
     i=$((i + 1))
     if [ "$i" -ge "$retries" ]; then
       if [ "$enter_sent" -eq 0 ]; then
+        fm_backend_herdr_submit_reason "the Enter key was never delivered"
         printf 'send-failed'
       else
         fm_composer_queued_enter_verdict "$verdict" \
