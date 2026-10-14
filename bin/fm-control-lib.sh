@@ -329,8 +329,12 @@ fm_control_backend_state_verified() {  # <backend>
 # reading:
 #   herdr CAN prove it. Every read goes through fm_backend_herdr_cli, which
 #     passes `--session <session>`, so the recheck starts and reads the session
-#     the RECORD names, through that session's own socket. The answer is about
-#     the task's endpoint and nothing else.
+#     the RECORD names, through that session's own socket. That answers for the
+#     server the seat reached, and two servers can answer differently for one
+#     session name, so a `missing` is additionally checked against the process
+#     table: an agent whose working directory is inside the task's worktree
+#     (the optional third argument) makes the verdict `alive` with the pid as
+#     its reason, and both verbs refuse on that non-empty reason.
 #   tmux CANNOT. `list-windows -a` describes only the server the CURRENT
 #     process addresses (its TMUX_TMPDIR/socket), and a task's record does not
 #     carry the endpoint's socket identity - so a different but running server
@@ -341,8 +345,8 @@ fm_control_backend_state_verified() {  # <backend>
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
-fm_control_endpoint_absence_verdict() {  # <backend> <target>
-  local backend=${1-} target=${2-}
+fm_control_endpoint_absence_verdict() {  # <backend> <target> [<worktree>]
+  local backend=${1-} target=${2-} worktree=${3-} occupant scan_rc
   fm_backend_source "$backend" \
     || { printf 'unproven\tbackend %s could not be loaded to prove anything about that endpoint' "'$backend'"; return 0; }
   case "$backend" in
@@ -356,7 +360,27 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target>
       case "$(fm_backend_herdr_endpoint_absence_recheck "$target")" in
         dead) printf 'dead\t' ;;
         alive) printf 'alive\t' ;;
-        missing) printf 'gone\t' ;;
+        missing)
+          # A second `missing` only says the server this seat addressed has no
+          # such pane, and two Herdr servers can disagree about one session name.
+          # The process table does not: an agent still running in the task's
+          # worktree owns it whatever any pane read said, so it is `alive`, with
+          # the pid as the reason (an empty reason is the ordinary alive).
+          if [ -n "$worktree" ] && declare -F fm_agent_process_in_worktree >/dev/null 2>&1; then
+            scan_rc=0
+            occupant=$(fm_agent_process_in_worktree "$worktree") || scan_rc=$?
+            case "$scan_rc" in
+              0)
+                printf 'alive\ta live agent process (pid %s, %s) still has its working directory in the task'"'"'s worktree %s, so the endpoint is not gone' \
+                  "${occupant%%$'\t'*}" "${occupant#*$'\t'}" "$worktree"
+                ;;
+              1) printf 'gone\t' ;;
+              *) printf 'unproven\tthe process table could not be read to check whether an agent still owns the task'"'"'s worktree %s' "$worktree" ;;
+            esac
+          else
+            printf 'gone\t'
+          fi
+          ;;
         *) printf 'unproven\tthe recorded herdr session'"'"'s server could not be started, or its pane could not be classified once it was running' ;;
       esac
       ;;

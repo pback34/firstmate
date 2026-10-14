@@ -649,7 +649,7 @@ do_exit() {
       # "destroyed" with "unreachable from this seat". Route it through the
       # control plane's one absence proof - the same one the relaunch gate uses
       # - and report what that proof actually established, never more.
-      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T")
+      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T" "$WT")
       case "${absence%%$'\t'*}" in
         gone)
           # Proven gone, so the agent that lived in it went with it: exit's
@@ -670,6 +670,11 @@ do_exit() {
           return 0
           ;;
         alive)
+          # A non-empty reason means no endpoint came back at all: a live agent
+          # process owns the worktree. There is no endpoint to interrupt or send
+          # the exit command to, so refuse and name the process.
+          [ -z "${absence#*$'\t'}" ] \
+            || die "task $ID's endpoint $T reads 'missing', but ${absence#*$'\t'}; exit will not claim it stopped nor send lifecycle input to an address it cannot reach (stop that process first, or repair the seat's Herdr identity)"
           # The agent came back with its endpoint. Fall through to the ordinary
           # alive path: interrupt if busy, then the harness's exit command.
           ;;

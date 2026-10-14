@@ -1878,16 +1878,37 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # `relaunch` cannot reach two different answers about one endpoint.
   RELAUNCH_STATE=$(fm_backend_agent_state "$BACKEND" "$RELAUNCH_TARGET")
   if [ "$RELAUNCH_STATE" = missing ]; then
-    RELAUNCH_ABSENCE=$(fm_control_endpoint_absence_verdict "$BACKEND" "$RELAUNCH_TARGET")
+    RELAUNCH_ABSENCE=$(fm_control_endpoint_absence_verdict "$BACKEND" "$RELAUNCH_TARGET" "$(fm_meta_get "$RELAUNCH_META" worktree)")
     case "${RELAUNCH_ABSENCE%%$'\t'*}" in
       gone) RELAUNCH_STATE=missing ;;
       dead) RELAUNCH_STATE=dead ;;
-      alive) RELAUNCH_STATE=alive ;;
+      alive)
+        # A non-empty reason is the process-table occupancy proof (a live agent
+        # still has its cwd in the worktree): refuse and name it.
+        if [ -n "${RELAUNCH_ABSENCE#*$'\t'}" ]; then
+          echo "error: task $ID's recorded endpoint $RELAUNCH_TARGET reads 'missing', but ${RELAUNCH_ABSENCE#*$'\t'}. Refusing to launch a second agent into a worktree an agent already owns" >&2
+          exit 1
+        fi
+        RELAUNCH_STATE=alive
+        ;;
       *)
         echo "error: task $ID's recorded endpoint $RELAUNCH_TARGET reads 'missing', but ${RELAUNCH_ABSENCE#*$'\t'}. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it" >&2
         exit 1
         ;;
     esac
+  fi
+  # A `dead` read is only as trustworthy as the server this seat reached: the
+  # pane can exist there as a bare shell while the real agent runs on another
+  # server in the same worktree. The process table does not depend on which
+  # server answered, so an agent process owning the worktree refuses a `dead`
+  # endpoint too. (A `missing` one was checked inside the absence proof above.)
+  # The dead pane's own shell classifies as a shell and never blocks.
+  if [ "$RELAUNCH_STATE" = dead ] && declare -F fm_agent_process_in_worktree >/dev/null 2>&1; then
+    RELAUNCH_OCCUPANT=$(fm_agent_process_in_worktree "$(fm_meta_get "$RELAUNCH_META" worktree)") \
+      && {
+        echo "error: task $ID's recorded endpoint $RELAUNCH_TARGET reads 'dead', but a live agent process (pid ${RELAUNCH_OCCUPANT%%$'\t'*}, ${RELAUNCH_OCCUPANT#*$'\t'}) still has its working directory in the task's worktree. Refusing to launch a second agent into a worktree an agent already owns" >&2
+        exit 1
+      }
   fi
   case "$RELAUNCH_STATE" in
     dead) ;;

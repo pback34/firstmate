@@ -33,6 +33,9 @@
 #                              so later polls suppress another escalation
 #   <task>.inbox/.retry-ring   name of a fire-and-forget record still owed its
 #                              one retry ring (fm_task_inbox_mark_retry)
+#   <task>.inbox/.ring-last    why the last ring did not land: "at=", "rc=",
+#                              "reason=" lines (fm_task_inbox_ring); removed by
+#                              the next ring that lands
 #
 # Record format (fm_task_inbox_write / fm_task_inbox_body):
 #   schema=fm-task-inbox.v1
@@ -353,12 +356,18 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # whose Enter never landed, so on an agent not reported busy it is submitted
 # rather than skipped; skipping it would block every later ring. On both paths
 # a lost first Enter gets one confirmed retry.
-fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
-  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict
-  case "$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)" in
-    dead|missing) return 3 ;;
+fm_task_inbox_ring_attempt() {  # <backend> <target> <record-path> [expected-label]
+  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict astate
+  local sink=${FM_TASK_INBOX_RING_REASON_FILE:-/dev/null}
+  astate=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)
+  case "$astate" in
+    dead|missing)
+      printf 'endpoint reads %s; nothing was typed\n' "$astate" >> "$sink" 2>/dev/null
+      return 3
+      ;;
   esac
   if ! line=$(fm_task_inbox_doorbell_line "$rec"); then
+    printf 'the doorbell line could not be built from the record\n' >> "$sink" 2>/dev/null
     return 2
   fi
   cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown
@@ -366,11 +375,13 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
     pending)
       fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" \
         && [ "$(fm_backend_busy_state "$backend" "$target" 2>/dev/null)" != busy ] \
-        || return 1
-      fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
+        || { printf 'the composer holds pending text other than the doorbell, or the agent is busy\n' >> "$sink" 2>/dev/null; return 1; }
+      fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>>"$sink" \
+        || { printf 'the Enter key to submit the pending doorbell failed\n' >> "$sink" 2>/dev/null; return 2; }
       sleep 0.3
       fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" || return 0
-      fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
+      fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>>"$sink" \
+        || { printf 'the retry Enter key to submit the pending doorbell failed\n' >> "$sink" 2>/dev/null; return 2; }
       return 0
       ;;
   esac
@@ -378,13 +389,60 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   # steps, so an agent exiting after the liveness check could leave a bare
   # shell only a suffix; the `: ` prefix protects complete lines only. Do not
   # add process-bound atomic delivery here unless an incident reopens this.
-  if ! verdict=$(fm_backend_send_text_submit "$backend" "$target" "$line" 2 0.4 0.3 "$label" 2>/dev/null); then
+  # The submit machinery's stderr and any reason the adapter records through
+  # FM_BACKEND_SEND_REASON_FILE are kept for fm_task_inbox_ring to publish.
+  if ! verdict=$(FM_BACKEND_SEND_REASON_FILE=$sink fm_backend_send_text_submit "$backend" "$target" "$line" 2 0.4 0.3 "$label" 2>>"$sink"); then
+    printf 'the backend send exited nonzero\n' >> "$sink" 2>/dev/null
     return 2
   fi
   # The verdict is read only to report a failed keystroke; every other value
   # (empty, pending, unknown, ...) is deliberately ignored, never proof.
-  [ "$verdict" != send-failed ] || return 2
+  [ "$verdict" != send-failed ] || { printf 'the backend reported send-failed\n' >> "$sink" 2>/dev/null; return 2; }
   return 0
+}
+
+# fm_task_inbox_ring: the ring itself, plus the one place its failure reason is
+# kept. The attempt appends one line per failing step to a scratch file, and
+# any non-zero result publishes them as <inbox-dir>/.ring-last (at=, rc=,
+# reason=), so a "did not reach" is attributable instead of being thrown away;
+# a ring that lands removes the file so a stale reason never outlives its
+# cause. Publishing is best-effort and never changes the return code.
+fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
+  local rec=${3:-} dir scratch='' rc=0 reason
+  dir=${rec%/*}
+  if [ -d "$dir" ]; then
+    scratch=$(mktemp "$dir/.ring-reason.XXXXXX" 2>/dev/null) || scratch=
+  fi
+  FM_TASK_INBOX_RING_REASON_FILE=${scratch:-/dev/null} fm_task_inbox_ring_attempt "$@" || rc=$?
+  if [ -d "$dir" ]; then
+    if [ "$rc" -eq 0 ]; then
+      rm -f "$dir/.ring-last" 2>/dev/null
+    else
+      reason=
+      [ -z "$scratch" ] || reason=$(tr '\n\t\r' '   ' < "$scratch" 2>/dev/null | tr -s ' ' | cut -c1-400)
+      reason=${reason# }
+      reason=${reason% }
+      [ -n "$reason" ] || reason="no step reported a reason"
+      {
+        printf 'at=%s\n' "$(date +%s)"
+        printf 'rc=%s\n' "$rc"
+        printf 'reason=%s\n' "$reason"
+      } > "$dir/.ring-last.$$" 2>/dev/null && mv -f "$dir/.ring-last.$$" "$dir/.ring-last" 2>/dev/null
+      rm -f "$dir/.ring-last.$$" 2>/dev/null
+    fi
+  fi
+  [ -z "$scratch" ] || rm -f "$scratch" 2>/dev/null
+  return "$rc"
+}
+
+# fm_task_inbox_ring_reason: the reason the last failed ring recorded for the
+# task whose steer is <record-path>, or nothing when none was kept.
+fm_task_inbox_ring_reason() {  # <record-path>
+  local f=${1%/*}/.ring-last line
+  [ -f "$f" ] || return 0
+  while IFS= read -r line; do
+    case "$line" in reason=*) printf '%s' "${line#reason=}"; return 0 ;; esac
+  done < "$f"
 }
 
 # Whether the composer's content, ignoring line wrapping, is exactly <line>.

@@ -2552,3 +2552,24 @@ Without Firstmate's hooks, Herdr reported the question panel as `blocked`, which
 This live proof covers the watcher and queue boundary; it does not establish live daemon-consumer delivery.
 `bin/fm-test-run.sh tests/fm-daemon.test.sh` exercises that consumer routing separately with portable regressions for busy escalation and busy-bookkeeping failures in away and quiet mode.
 Repeat the hooked-worker check above before publication if watcher or task-inbox busy code changes; `bin/fm-test-run.sh tests/fm-task-inbox.test.sh` refreshes the portable ladder regressions.
+
+## Worktree occupancy scan
+
+Verified on 2026-10-13 on Linux 7.2.5 with Claude Code `2.1.296 (Claude Code)`.
+`fm_agent_process_in_worktree` in `bin/fm-agent-process-lib.sh` owns the scan that lets `exit` and `relaunch` refuse while an agent process has its working directory inside a task's worktree.
+It is a read-only process-table scan; no agent, pane, or Herdr server was started, stopped, or signalled.
+
+Run against the worktree of each of the five Claude Code workers then running on the machine, with `FM_WORKTREE_PROC_SOURCE=proc`:
+
+```sh
+bash -c '. bin/fm-agent-process-lib.sh; FM_WORKTREE_PROC_SOURCE=proc fm_agent_process_in_worktree "$worktree"; echo "rc=$?"'
+```
+
+Observed: every call printed that worktree's own Claude Code pid with the process name `claude` and returned `rc=0`.
+Across those worktrees the scan saw 86 processes with a working directory inside one of them, and `fm_agent_process_classify` called 5 of them `agent` (the five Claude Code processes), 14 `shell`, and 67 `other` (MCP servers, `npm exec` and `uv` launchers, `python` and `node` helpers), so shells and helper children raise no false refusal.
+A directory holding no agent (`/tmp`) returned `rc=1`.
+
+Proven: Claude Code on Linux, through `/proc/<pid>/cwd` and `/proc/<pid>/comm`.
+Not proven: the macOS `lsof -d cwd` source, which is exercised only with fake `lsof` and `ps` in `tests/fm-control-relaunch.test.sh`, and every other harness on the `/proc` source, which is exercised only with renamed processes.
+Extending the `live-harness-optin` guard (`tests/fm-harness-liveness-drift-live-e2e.test.sh`) to start each installed harness in a temporary directory and assert the scan finds it is the follow-up that would close both gaps.
+Portable coverage: `bin/fm-test-run.sh tests/fm-control-relaunch.test.sh`.

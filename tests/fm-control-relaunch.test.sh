@@ -2603,6 +2603,182 @@ test_herdr_rebind_stays_in_the_recorded_session
 test_herdr_reclaim_refuses_an_agent_that_came_back
 test_herdr_reclaim_keeps_the_task_whole
 test_herdr_reclaim_of_a_secondmate_names_its_own_owner
+# start_fake_agent <case-dir> <name>: a process whose kernel name is <name> and
+# whose working directory is the task's worktree, standing in for a live harness
+# that no pane read can see. Prints its pid. It is a copy of sleep, so it runs
+# nothing and is killed by stop_fake_agent.
+start_fake_agent() {  # <case-dir> <name>
+  local dir=$1 name=$2 pid
+  mkdir -p "$dir/fake-agents"
+  cp "$(command -v sleep)" "$dir/fake-agents/$name"
+  (cd "$dir/wt" && exec "$dir/fake-agents/$name" 300) >/dev/null 2>&1 &
+  pid=$!
+  # comm changes at exec; wait for it so the scan cannot race the fork.
+  local i=0
+  while [ "$i" -lt 100 ] && [ "$(cat "/proc/$pid/comm" 2>/dev/null)" != "$name" ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  printf '%s' "$pid"
+}
+
+stop_fake_agent() {  # <pid>
+  kill "$1" 2>/dev/null || true
+  wait "$1" 2>/dev/null || true
+}
+
+test_herdr_relaunch_refuses_when_a_live_agent_owns_the_worktree() {
+  local dir out rc=0 log pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip occupied-relaunch rl80 fmlab '%none' || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # The recorded pane is absent from the server this seat reads, so the endpoint
+  # proof says `gone` - but a claude process still has its cwd in the worktree.
+  pid=$(start_fake_agent "$dir" claude)
+  out=$(run_spawn "$dir" rl80 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  log=$(cat "$dir/fake/herdr-log")
+  expect_code 1 "$rc" "a relaunch must refuse while an agent process owns the worktree"$'\n'"$out"$'\n'"$log"
+  assert_contains "$out" "pid $pid" "the refusal must name the process that owns the worktree"
+  assert_contains "$out" "claude" "the refusal must name what the process is"
+  assert_not_contains "$log" "tab create" "a refused relaunch must not mint a second tab"
+  assert_not_contains "$log" "workspace create" "a refused relaunch must not create a workspace"
+  [ "$(meta_field "$dir" rl80 herdr_pane_id)" = '%7' ] \
+    || fail "a refused relaunch rewrote the record's pane id"
+  pass "reclaim: a live agent process in the worktree refuses the relaunch and is named"
+}
+
+test_herdr_exit_refuses_when_a_live_agent_owns_the_worktree() {
+  local dir out rc=0 pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip occupied-exit rl81 fmlab '%none' || {
+    echo "skip - herdr exit needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  pid=$(start_fake_agent "$dir" codex)
+  out=$(run_control "$dir" rl81 exit) || rc=$?
+  stop_fake_agent "$pid"
+  expect_code 1 "$rc" "exit must not claim the endpoint gone while an agent owns the worktree"$'\n'"$out"
+  assert_contains "$out" "pid $pid" "the refusal must name the process that owns the worktree"
+  assert_not_contains "$out" "endpoint-gone" "exit must not report a stop it could not prove"
+  pass "fm-control exit: a live agent process in the worktree refuses endpoint-gone and is named"
+}
+
+test_herdr_relaunch_refuses_a_dead_pane_while_a_live_agent_owns_the_worktree() {
+  local dir out rc=0 log pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip occupied-dead rl83 || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # The pane this seat reads is a bare shell (`dead`), but the real agent runs on
+  # another server in the same worktree, so only the process table can see it.
+  rm -f "$dir/fake/herdr-stopped"
+  pid=$(start_fake_agent "$dir" claude)
+  out=$(run_spawn "$dir" rl83 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  log=$(cat "$dir/fake/herdr-log")
+  expect_code 1 "$rc" "a dead pane must not be adopted while an agent owns the worktree"$'\n'"$out"$'\n'"$log"
+  assert_contains "$out" "pid $pid" "the refusal must name the process that owns the worktree"
+  assert_contains "$out" "reads 'dead'" "the refusal must say which read it overrode"
+  assert_not_contains "$log" "send-text" "a refused relaunch must not type the launch brief into the pane"
+  [ "$(meta_field "$dir" rl83 window)" = 'fmlab:%7' ] || fail "a refused relaunch moved the recorded endpoint"
+  pass "reclaim: a dead pane is not adopted while a live agent process owns the worktree"
+}
+
+test_herdr_relaunch_adopts_a_dead_pane_when_only_its_shell_is_in_the_worktree() {
+  local dir out rc=0 pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip dead-shell-only rl84 || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  rm -f "$dir/fake/herdr-stopped"
+  pid=$(start_fake_agent "$dir" bash)
+  out=$(run_spawn "$dir" rl84 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  expect_code 0 "$rc" "a dead pane whose own shell sits in the worktree is the ordinary relaunch"$'\n'"$out"
+  pass "reclaim: a shell in the worktree never blocks adopting a dead pane"
+}
+
+test_herdr_relaunch_and_exit_refuse_when_the_process_table_cannot_be_read() {
+  local dir out rc=0
+  herdr_case_or_skip unreadable-table rl85 fmlab '%none' || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # No readable scan source is "not proven", never "no agent".
+  out=$(FM_WORKTREE_PROC_SOURCE=lsof FM_LSOF_BIN="$dir/no-such-lsof" run_spawn "$dir" rl85 --relaunch --harness claude) || rc=$?
+  expect_code 1 "$rc" "a relaunch must refuse when occupancy cannot be checked"$'\n'"$out"
+  assert_contains "$out" "process table could not be read" "the refusal should say why absence is unproven"
+  rc=0
+  out=$(FM_WORKTREE_PROC_SOURCE=lsof FM_LSOF_BIN="$dir/no-such-lsof" run_control "$dir" rl85 exit) || rc=$?
+  expect_code 1 "$rc" "exit must refuse when occupancy cannot be checked"$'\n'"$out"
+  assert_not_contains "$out" "endpoint-gone" "exit must not claim a stop it could not prove"
+  pass "reclaim: an unreadable process table leaves absence unproven, so both verbs refuse"
+}
+
+test_herdr_relaunch_proceeds_when_no_agent_owns_the_worktree() {
+  local dir out rc=0 pid
+  [ -d /proc/self ] || { echo "skip - this check scans /proc"; return 0; }
+  herdr_case_or_skip unoccupied-relaunch rl82 fmlab '%none' || {
+    echo "skip - herdr relaunch needs jq (the herdr adapter parses JSON with it)"
+    return 0
+  }
+  dir=$HERDR_CASE_DIR
+  # A process in the worktree that is not a harness (a build, an editor, a
+  # shell) must not block the rebind: only agent processes own a worktree.
+  pid=$(start_fake_agent "$dir" tail)
+  out=$(run_spawn "$dir" rl82 --relaunch --harness claude) || rc=$?
+  stop_fake_agent "$pid"
+  expect_code 0 "$rc" "a relaunch with no agent in the worktree should rebind as before"$'\n'"$out"
+  assert_contains "$out" "window=fmlab:%9" "the rebind should land on the new pane"
+  pass "reclaim: a non-agent process in the worktree does not block the rebind"
+}
+
+test_worktree_occupancy_scan_reads_lsof_on_a_host_without_proc() {
+  local dir fakebin out rc=0 wt
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-occupancy.XXXXXX")
+  wt="$dir/wt"; mkdir -p "$wt/sub" "$dir/fakebin"
+  wt=$(cd "$wt" && pwd -P)
+  # macOS has no /proc: the scan asks `lsof -d cwd` and classifies through ps.
+  cat > "$dir/fakebin/lsof" <<LSOF
+#!/usr/bin/env bash
+printf 'p100\nfcwd\nn/elsewhere\np200\nfcwd\nn$wt/sub\np300\nfcwd\nn$wt\n'
+LSOF
+  cat > "$dir/fakebin/ps" <<'PS'
+#!/usr/bin/env bash
+pid=; mode=
+while [ $# -gt 0 ]; do case "$1" in -p) pid=$2; shift ;; -o) mode=$2; shift ;; esac; shift; done
+case "$pid:$mode" in
+  200:comm=) echo bash ;;
+  200:args=) echo "-bash" ;;
+  300:comm=) echo claude ;;
+  300:args=) echo "/usr/local/bin/claude --resume" ;;
+esac
+PS
+  chmod +x "$dir/fakebin/lsof" "$dir/fakebin/ps"
+  out=$(bash -c '. "$1/bin/fm-agent-process-lib.sh"; FM_WORKTREE_PROC_SOURCE=lsof FM_LSOF_BIN="$2/fakebin/lsof" FM_PS_BIN="$2/fakebin/ps" fm_agent_process_in_worktree "$3"' _ "$ROOT" "$dir" "$wt") || rc=$?
+  expect_code 0 "$rc" "the lsof source should find the claude process"$'\n'"$out"
+  [ "$out" = $'300\tclaude' ] || fail "the scan should report only the agent process below the worktree, got '$out'"
+  rm -rf "$dir"
+  pass "occupancy scan: the lsof source finds an agent below the worktree and skips shells and strangers"
+}
+
 test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause
+test_herdr_relaunch_refuses_when_a_live_agent_owns_the_worktree
+test_herdr_exit_refuses_when_a_live_agent_owns_the_worktree
+test_herdr_relaunch_refuses_a_dead_pane_while_a_live_agent_owns_the_worktree
+test_herdr_relaunch_adopts_a_dead_pane_when_only_its_shell_is_in_the_worktree
+test_herdr_relaunch_and_exit_refuse_when_the_process_table_cannot_be_read
+test_herdr_relaunch_proceeds_when_no_agent_owns_the_worktree
+test_worktree_occupancy_scan_reads_lsof_on_a_host_without_proc
 test_relaunch_reverifies_an_already_in_flight_item_instead_of_rewriting_it
 test_relaunch_moves_a_drifted_item_back_in_flight

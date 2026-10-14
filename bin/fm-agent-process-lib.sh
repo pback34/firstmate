@@ -114,3 +114,95 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
     printf 'other'
   fi
 }
+
+# fm_agent_process_in_worktree: the live-process occupancy proof. Prints
+# "<pid>\t<name>" for the first running process that fm_agent_process_classify
+# calls `agent` and whose current directory is the worktree or anything below
+# it, then returns 0. Returns 1 when the scan ran and found none, and 2 when it
+# could not run at all (neither a readable /proc nor lsof), which a caller must
+# treat as "not proven", never as "none".
+#
+# Why it exists: a runtime backend's endpoint read answers only for the server
+# it happens to address, so a `missing` pane is not proof that no agent owns the
+# task's worktree. The kernel's process table is the one witness that does not
+# depend on which Herdr server a seat reached. Linux reads /proc/<pid>/cwd;
+# macOS has no /proc, so it asks `lsof -d cwd`. FM_WORKTREE_PROC_SOURCE (proc or
+# lsof) pins the source for tests, FM_LSOF_BIN and FM_PS_BIN name the tools.
+# The scanning shell itself is skipped, and shells never classify as agents, so
+# a seat that happens to run from inside the worktree does not block itself
+# through its own shell. A caller that is itself an agent running from inside
+# the worktree is found like any other.
+fm_agent_process_in_worktree() {  # <worktree> -> "<pid>\t<name>"
+  local wt=${1:-} source=${FM_WORKTREE_PROC_SOURCE:-} pid cwd name argv0 args lsof_bin ps_bin
+  [ -n "$wt" ] && [ -d "$wt" ] || return 2
+  wt=$(cd "$wt" 2>/dev/null && pwd -P) || return 2
+  if [ -z "$source" ]; then
+    if [ -d /proc/self ]; then source=proc; else source=lsof; fi
+  fi
+  case "$source" in
+    proc)
+      [ -d /proc/self ] || return 2
+      local glob candidates
+      # One find call pre-selects the processes whose cwd link points into the
+      # worktree (-lname is a glob, so its metacharacters are escaped); only
+      # those are classified. Reading every /proc/<pid>/cwd one process at a time
+      # costs a fork each and seconds on a busy host.
+      if command -v find >/dev/null 2>&1; then
+        glob=$(printf '%s' "$wt" | sed 's/[][*?\\]/\\&/g')
+        candidates=$(find /proc -maxdepth 2 -mindepth 2 -name cwd \( -lname "$glob" -o -lname "$glob/*" \) 2>/dev/null \
+          | sed -n 's|^/proc/\([0-9][0-9]*\)/cwd$|\1|p' | sort -n)
+      else
+        candidates=$(for cwd in /proc/[0-9]*/cwd; do
+          pid=${cwd#/proc/}; pid=${pid%/cwd}
+          cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+          case "$cwd" in "$wt"|"$wt"/*) printf '%s\n' "$pid" ;; esac
+        done)
+      fi
+      for pid in $candidates; do
+        [ "$pid" != "$$" ] && [ "$pid" != "${BASHPID:-}" ] || continue
+        cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+        case "$cwd" in "$wt"|"$wt"/*) ;; *) continue ;; esac
+        name=$(cat "/proc/$pid/comm" 2>/dev/null) || continue
+        argv0=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -n 1)
+        args=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+        if [ "$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")" = agent ]; then
+          printf '%s\t%s' "$pid" "$name"
+          return 0
+        fi
+      done
+      return 1
+      ;;
+    lsof)
+      lsof_bin=${FM_LSOF_BIN:-lsof}
+      ps_bin=${FM_PS_BIN:-ps}
+      command -v "$lsof_bin" >/dev/null 2>&1 || return 2
+      command -v "$ps_bin" >/dev/null 2>&1 || return 2
+      local out line
+      out=$("$lsof_bin" -a -d cwd -Fpn 2>/dev/null) || [ -n "$out" ] || return 2
+      pid=
+      while IFS= read -r line; do
+        case "$line" in
+          p*) pid=${line#p} ;;
+          n*)
+            cwd=${line#n}
+            case "$cwd" in "$wt"|"$wt"/*) ;; *) continue ;; esac
+            [ -n "$pid" ] && [ "$pid" != "$$" ] || continue
+            name=$("$ps_bin" -p "$pid" -o comm= 2>/dev/null) || continue
+            name=${name#"${name%%[![:space:]]*}"}
+            args=$("$ps_bin" -p "$pid" -o args= 2>/dev/null) || args=
+            args=${args#"${args%%[![:space:]]*}"}
+            argv0=${args%%[[:space:]]*}
+            if [ "$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")" = agent ]; then
+              printf '%s\t%s' "$pid" "${name##*/}"
+              return 0
+            fi
+            ;;
+        esac
+      done <<EOF2
+$out
+EOF2
+      return 1
+      ;;
+  esac
+  return 2
+}
