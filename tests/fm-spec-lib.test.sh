@@ -151,6 +151,17 @@ test_record_keeps_pytest_bdd_shape_for_the_gate() {
   pass "record keeps the pytest-bdd shape for the gate"
 }
 
+test_record_reads_behave_statuses() {
+  local rec
+  rec=$(record "$FIX/behave-1.3.json")
+  assert_equals "7:passed 11:undefined 19:passed 20:failed 24:passed 26:passed 29:pending" \
+    "$(printf '%s' "$rec" | jq -r '[.scenarios[] | "\(.line):\(.status)"] | join(" ")')" "per-scenario status, outline rows at their example lines"
+  assert_equals "2 2 2 2 2 2 2" "$(printf '%s' "$rec" | jq -r '[.scenarios[].steps] | map(tostring) | join(" ")')" "background steps are counted"
+  assert_equals '{"passed":4,"failed":1,"undefined":1,"pending":1,"skipped":0,"ambiguous":0,"unknown":0}' \
+    "$(printf '%s' "$rec" | jq -c '.counts')" "counts; the single-definition ambiguity probe passes under behave"
+  pass "record reads behave statuses"
+}
+
 test_record_normalizes_uri_forms() {
   local wt real link u got
   wt="$TMP_ROOT/wt"
@@ -184,15 +195,15 @@ EOF
   pass "record merges backgrounds, hides hooks, and maps unknown statuses"
 }
 
-locked_copy() {  # <name>; prints "<lock> <worktree>" for a committed demo spec
-  local repo wt dir
+locked_copy() {  # <name> [<fixture-feature>]; prints "<lock> <worktree>" for a committed spec (default demo.feature)
+  local repo wt dir feature=${2:-demo.feature}
   repo="$TMP_ROOT/$1-repo"
   wt="$TMP_ROOT/$1-wt"
   dir="$TMP_ROOT/$1-data"
   fm_git_worktree "$repo" "$wt" "fm/$1"
   mkdir -p "$wt/features/with space" "$dir/spec/features/with space"
-  cp "$FIX/demo.feature" "$wt/features/with space/demo.feature"
-  cp "$FIX/demo.feature" "$dir/spec/features/with space/demo.feature"
+  cp "$FIX/$feature" "$wt/features/with space/$feature"
+  cp "$FIX/$feature" "$dir/spec/features/with space/$feature"
   git -C "$wt" add features
   git -C "$wt" commit -q -m spec
   fm_spec_build_lock "$dir/spec" "$1" "$(git -C "$wt" rev-parse HEAD)" approval 1 > "$dir/spec-lock.json"
@@ -254,6 +265,29 @@ EOF
   assert_equals "scenarios not passing: features/with space/demo.feature:11 unknown(steps 1/2)" "$(gate_reason "$lock" "$wt")" \
     "outline rows matched by ordinal; the omitted undefined step is caught"
   pass "gate matches outline rows by ordinal and catches short step counts"
+}
+
+behave_record() {  # <lock> <worktree> <fixture-json> <feature-basename>
+  jq --arg u "features/with space/$4" 'map(.uri = $u)' "$FIX/$3" > "$TMP_ROOT/behave.json"
+  fm_spec_record_from_cucumber "$TMP_ROOT/behave.json" "$2" "$(git -C "$2" rev-parse HEAD)" bin/acceptance 0 1 > "${1%/*}/acceptance.json"
+}
+
+test_gate_refuses_behave_scenarios_that_did_not_pass() {
+  local lock wt
+  read -r lock wt <<EOF
+$(locked_copy behave-demo)
+EOF
+  behave_record "$lock" "$wt" behave-1.3.json demo.feature
+  assert_equals "scenarios not passing: features/with space/demo.feature:11 undefined features/with space/demo.feature:20 failed features/with space/demo.feature:29 pending" \
+    "$(gate_reason "$lock" "$wt")" "behave demo failures"
+  read -r lock wt <<EOF
+$(locked_copy behave-edge behave-edge.feature)
+EOF
+  behave_record "$lock" "$wt" behave-edge.json behave-edge.feature
+  assert_equals "scenarios not passing: features/with space/behave-edge.feature:11 skipped features/with space/behave-edge.feature:15 skipped features/with space/behave-edge.feature:18 failed features/with space/behave-edge.feature:7 skipped" \
+    "$(gate_reason "$lock" "$wt")" \
+    "tag-filtered, code-skipped, hook-crashed, and failed scenarios are all refused even with exit 0"
+  pass "gate refuses behave scenarios that did not pass"
 }
 
 test_archive_check_and_contract() {
@@ -319,11 +353,13 @@ test_lock_fails_closed_on_missing_or_empty_features
 test_lock_fails_closed_on_dangling_or_symlinked_feature
 test_record_reads_cucumber_js_statuses
 test_record_keeps_pytest_bdd_shape_for_the_gate
+test_record_reads_behave_statuses
 test_record_normalizes_uri_forms
 test_record_merges_backgrounds_hides_hooks_and_maps_unknown
 test_gate_accepts_a_fully_passing_run
 test_gate_refusals
 test_gate_matches_outline_rows_by_ordinal_and_catches_short_steps
+test_gate_refuses_behave_scenarios_that_did_not_pass
 test_archive_check_and_contract
 test_contract_quotes_a_home_path_with_a_space
 test_archive_refuses_a_deleted_archived_file

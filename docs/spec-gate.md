@@ -48,7 +48,7 @@ Run the commands in this order.
 The gate reads Cucumber JSON, so a runner needs an entrypoint that writes its report to the path it is given.
 The entrypoint runs from the worktree root with one argument, the absolute path for the report, and only a zero exit can pass the gate.
 
-For cucumber-js, the proven runner, a complete entrypoint is:
+For cucumber-js, the proven JavaScript runner, a complete entrypoint is:
 
 ```bash
 #!/usr/bin/env bash
@@ -59,14 +59,31 @@ exec npx cucumber-js --format "json:$1"
 
 Make it executable with `chmod +x bin/acceptance`, and register `acceptance=bin/acceptance`.
 
+For behave, the proven Python runner, install `behave==1.3.0` and `behave-cucumber-formatter==1.0.1`, pinned, because the gate trusts the formatter's report, and use:
+
+```bash
+#!/usr/bin/env bash
+# bin/acceptance - write a Cucumber JSON report to "$1"; exit non-zero on any failure.
+set -euo pipefail
+exec behave -f behave_cucumber_formatter:PrettyCucumberJSONFormatter -o "$1" -f plain
+```
+
+behave reads the `features/` directory at the worktree root, so a project whose code lives in a subdirectory sets up its import path and test settings in `features/environment.py`.
+
 | Runner | Status |
 | --- | --- |
 | cucumber-js | Proven by captured fixtures. |
+| behave 1.3.0 with behave-cucumber-formatter 1.0.1 | Proven by captured fixtures, with two differences from cucumber-js that never produce a false pass. |
 | godog, with `godog run --format "cucumber:$1"` | Unverified until captured fixtures exist. |
 | Cucumber-JVM, with `--plugin "json:$1"` | Unverified until captured fixtures exist. |
 | pytest-bdd | Unsupported: its Cucumber JSON omits undefined steps and reports skipped steps as `passed`, a false pass the gate cannot detect. |
 
 The record format and the status mapping are owned by [`bin/fm-spec-lib.sh`](../bin/fm-spec-lib.sh).
+
+The behave differences are these.
+A step matched by both a `parse` pattern and a regular expression runs the first definition behave registered instead of reporting ambiguity, while two definitions of the same step text stop the run before any report is written.
+A scenario whose setup hook crashes is reported as skipped rather than as an error, and the gate still refuses it.
+A scenario left out by a tag filter or skipped from a hook is also reported as skipped and refused, so only a scenario that ran every step and passed can satisfy the gate.
 
 ## Herdr placement
 

@@ -1,0 +1,339 @@
+[
+{
+  "description": "",
+  "elements": [
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:4",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 23842,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;plain-passes",
+      "keyword": "Scenario",
+      "line": 7,
+      "location": "features/demo.feature:7",
+      "name": "plain passes",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 8,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 18835,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 40770,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;inside-rule-undefined",
+      "keyword": "Example",
+      "line": 11,
+      "location": "features/demo.feature:11",
+      "name": "inside rule undefined",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 12,
+          "name": "nothing defined here",
+          "result": {
+            "duration": 0,
+            "status": "undefined"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 20266,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;outline-1----@1.1-first",
+      "keyword": "Scenario Outline",
+      "line": 19,
+      "location": "features/demo.feature:19",
+      "name": "outline 1 -- @1.1 first",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 15,
+          "match": {
+            "location": "features/steps/steps.py:15"
+          },
+          "name": "count 1",
+          "result": {
+            "duration": 18358,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 419378,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;outline-2----@1.2-first",
+      "keyword": "Scenario Outline",
+      "line": 20,
+      "location": "features/demo.feature:20",
+      "name": "outline 2 -- @1.2 first",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 15,
+          "match": {
+            "location": "features/steps/steps.py:15"
+          },
+          "name": "count 2",
+          "result": {
+            "duration": 33140,
+            "error_message": "ASSERT FAILED: boom",
+            "status": "failed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 17166,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;outline-3----@2.1-second",
+      "keyword": "Scenario Outline",
+      "line": 24,
+      "location": "features/demo.feature:24",
+      "name": "outline 3 -- @2.1 second",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 15,
+          "match": {
+            "location": "features/steps/steps.py:15"
+          },
+          "name": "count 3",
+          "result": {
+            "duration": 14544,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 14544,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;ambiguous-one",
+      "keyword": "Scenario",
+      "line": 26,
+      "location": "features/demo.feature:26",
+      "name": "ambiguous one",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 27,
+          "match": {
+            "location": "features/steps/steps.py:21"
+          },
+          "name": "dup step",
+          "result": {
+            "duration": 15736,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Background",
+      "location": "features/demo.feature:10",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 5,
+          "match": {
+            "location": "features/steps/steps.py:10"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 14544,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "description": "",
+      "id": "demo;pending-one",
+      "keyword": "Scenario",
+      "line": 29,
+      "location": "features/demo.feature:29",
+      "name": "pending one",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 30,
+          "match": {
+            "location": "features/steps/steps.py:26"
+          },
+          "name": "pend",
+          "result": {
+            "duration": 23127,
+            "status": "pending"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    }
+  ],
+  "id": "demo",
+  "keyword": "Feature",
+  "line": 2,
+  "name": "Demo",
+  "status": "error",
+  "tags": [
+    {
+      "line": 1,
+      "name": "@acct"
+    }
+  ],
+  "uri": "features/demo.feature"
+}
+]
