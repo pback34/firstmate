@@ -16,9 +16,14 @@
 # PR instead of shipping a new one).
 # Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo|external> [--shape squash]] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout --spec --acceptance <repo-relative entrypoint> [--base-branch <branch>]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   --spec with --acceptance makes that scout a spec scout: its deliverable also
+#   includes Gherkin scenarios under features/ and the brief names the project's
+#   acceptance entrypoint on a line of its own. Firstmate resolves the entrypoint
+#   with fm-project-mode.sh --acceptance; this script never reads the registry.
 #   It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
 #   confirms the legacy board-compatibility floor; otherwise it asks for a text report.
 #   --secondmate writes a persistent secondmate charter. The project list
@@ -225,6 +230,9 @@ UPSTREAM_CONSENT=
 UPSTREAM_CONSENT_SET=0
 PROJECT_DIR=
 PROJECT_DIR_SET=0
+SPEC=0
+ACCEPTANCE=
+ACCEPTANCE_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -240,6 +248,7 @@ for a in "$@"; do
       shape) SHAPE=$a; SHAPE_SET=1 ;;
       upstream-consent) UPSTREAM_CONSENT=$a; UPSTREAM_CONSENT_SET=1 ;;
       project) PROJECT_DIR=$a; PROJECT_DIR_SET=1 ;;
+      acceptance) ACCEPTANCE=$a; ACCEPTANCE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -264,6 +273,9 @@ for a in "$@"; do
     --upstream-consent=*) UPSTREAM_CONSENT=${a#--upstream-consent=}; UPSTREAM_CONSENT_SET=1 ;;
     --project) want_value="project" ;;
     --project=*) PROJECT_DIR=${a#--project=}; PROJECT_DIR_SET=1 ;;
+    --spec) SPEC=1 ;;
+    --acceptance) want_value=acceptance ;;
+    --acceptance=*) ACCEPTANCE=${a#--acceptance=}; ACCEPTANCE_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -378,6 +390,21 @@ if [ "$KIND" = ship ] && [ "$MODE" != local-only ] && [ "$PROJECT_DIR_SET" -eq 1
       echo "error: to let this home publish to ${FM_ROLE_PUB_TARGET:-that repository}, write 'maintainer ${FM_ROLE_PUB_TARGET:-<host>/<owner>/<repo>}' into $CONFIG/firstmate-role (docs/configuration.md \"Firstmate role\"), or pass --upstream-consent ${FM_ROLE_PUB_TARGET:-<host>/<owner>/<repo>} for this one task with the captain's explicit approval" >&2
       exit 1
       ;;
+  esac
+fi
+if [ "$SPEC" -eq 1 ] || [ "$ACCEPTANCE_SET" -eq 1 ]; then
+  if [ "$KIND" != scout ]; then
+    echo "error: --spec and --acceptance apply only to scout briefs; a promoted ship inherits the spec through bin/fm-promote.sh" >&2
+    exit 1
+  fi
+  if [ "$SPEC" -ne 1 ] || [ "$ACCEPTANCE_SET" -ne 1 ] || [ -z "$ACCEPTANCE" ]; then
+    echo "error: a spec scout needs both --spec and --acceptance <repo-relative entrypoint>; resolve it with bin/fm-project-mode.sh --acceptance <project>" >&2
+    exit 1
+  fi
+  case "$ACCEPTANCE" in
+    /*|-*|*' '*|..|../*|*/../*|*/..)
+      echo "error: --acceptance must be a repo-relative path inside the project without spaces (got '$ACCEPTANCE')" >&2
+      exit 1 ;;
   esac
 fi
 ID=${POS[0]}
@@ -673,6 +700,22 @@ else
   SETUP_BASE="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch."
 fi
 
+# A spec scout's brief adds the spec deliverable section, which names the acceptance
+# entrypoint on a line of its own. The value is empty for a plain scout, so the
+# heredoc line that carries it renders the same blank line a plain scout always had.
+SPEC_SCOUT_BLOCK=
+if [ "$SPEC" -eq 1 ]; then
+  SPEC_SCOUT_BLOCK="
+# Spec deliverable
+Acceptance entrypoint: $ACCEPTANCE
+This is a SPEC scout: besides report.md, your deliverable is executable acceptance scenarios for the captain to approve.
+- Write or extend Gherkin files under \`features/\` in this worktree with English keywords, and commit them here; never push.
+- Describe observable behavior with concrete examples, using Scenario Outline tables for data variations; never prescribe implementation, frameworks, or internal structure.
+- Keep one behavior per scenario, each decidable by an automated test, and do not write step definitions or product code.
+- List every open question and assumption in report.md under \`## Open questions\` so the captain can settle them before approval.
+- Before reporting done, run \`$FM_ROOT/bin/fm-spec.sh show $ID\` and paste its output into report.md under \`## Scenarios\`.
+"
+fi
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.'
@@ -715,7 +758,7 @@ $CREWMATE_PAUSE_INSTRUCTIONS
 $SHARED_INFRA_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
-
+$SPEC_SCOUT_BLOCK
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
 The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.

@@ -4,6 +4,8 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-spec-lib.sh"
 
 RECON="$ROOT/bin/fm-inactive-reconcile.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
@@ -235,6 +237,32 @@ test_unpushed_ci_ready_done_is_not_published() {
   [ ! -s "$MAIN/state/mate.status" ] || fail "unpushed CI-ready done: was published upstream"
   [ "$(outcome_count "$MATE" reported)" = 0 ] || fail "unpushed CI-ready done: left a delivery receipt"
   pass "unpushed CI-ready ship done: is not published upstream"
+}
+
+# A locked child's CI-ready done is not published upstream until its spec gate
+# passes. The same child, pushed and recorded, publishes without the lock, so
+# the held line belongs to the lock rather than to the reachability gate.
+test_locked_ci_ready_done_is_refused_without_acceptance() {
+  make_world locked-ready-control; bind_secondmate local
+  write_child "$MATE" child 'done: PR https://example.test/owner/repo/pull/1 checks green'
+  FM_FAKE_CREW_STATE='unknown' run_reconcile "$MATE"
+  [ "$(outcome_count "$MATE" reported)" = 1 ] \
+    || fail "unlocked control: the accepted CI-ready done was not delivered"
+
+  make_world locked-ready; bind_secondmate local
+  write_child "$MATE" child 'done: PR https://example.test/owner/repo/pull/1 checks green'
+  mkdir -p "$MATE/projects/child/features" "$WORLD/spec/features"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$MATE/projects/child/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$WORLD/spec/features/demo.feature"
+  git -C "$MATE/projects/child" add features
+  git -C "$MATE/projects/child" commit -q -m spec
+  fm_spec_build_lock "$WORLD/spec" child "$(git -C "$MATE/projects/child" rev-parse HEAD)" approval 1 \
+    > "$WORLD/spec-lock.json" || fail "could not build the spec lock"
+  printf 'spec_lock=%s\n' "$WORLD/spec-lock.json" >> "$MATE/state/child.meta"
+  FM_FAKE_CREW_STATE='unknown' run_reconcile "$MATE"
+  [ ! -s "$MAIN/state/mate.status" ] || fail "locked CI-ready done: was published upstream"
+  [ "$(outcome_count "$MATE" reported)" = 0 ] || fail "locked CI-ready done: left a delivery receipt"
+  pass "a locked CI-ready ship done: is not published upstream without an acceptance run"
 }
 
 # The ledger pass runs on every poll, so a ship done: already delivered does
@@ -1041,6 +1069,7 @@ SH
 test_main_direct_terminal_presentation_receipt
 test_branch_ack_retires_inactive_outcome_receipt
 test_unpushed_ci_ready_done_is_not_published
+test_locked_ci_ready_done_is_refused_without_acceptance
 test_delivered_ledger_done_skips_git_gate
 test_local_secondmate_delivers_terminal_ledger_line
 test_secondmate_multiline_terminal_outcome_is_delivered_once

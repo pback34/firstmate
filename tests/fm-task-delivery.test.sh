@@ -16,6 +16,8 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=bin/fm-spec-lib.sh
+. "$ROOT/bin/fm-spec-lib.sh"
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
 BRIEF="$ROOT/bin/fm-brief.sh"
@@ -155,6 +157,54 @@ EOF
   assert_contains "$out" "records no delivery contract line" "a legacy brief did not warn about its missing contract"
   assert_not_contains "$out" "delivery mismatch" "a legacy brief was treated as a mismatch"
   pass "fm-spawn: the brief's recorded mode and the spawn's explicit mode must agree"
+}
+
+# A spec scout's brief names the acceptance entrypoint it was rendered for, and the
+# spawn refuses when the project registers a different one. The check runs before
+# any endpoint exists, so a refused spawn leaves no task metadata behind.
+test_spawn_refuses_a_spec_scout_entrypoint_mismatch() {
+  local rec home proj fakebin out status
+  rec=$(make_home spec-entry "- proj [direct-PR acceptance=bin/acceptance] - x (added 2026-10-12)")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  FM_HOME="$home" "$BRIEF" spec-entry-m1 proj --scout --spec --acceptance bin/other >/dev/null 2>&1 \
+    || fail "a spec scout brief naming another entrypoint should still scaffold"
+  fill_brief_subsections "$home/data/spec-entry-m1/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-m1 "$proj" claude --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a spec scout whose brief names another entrypoint should exit non-zero"
+  assert_contains "$out" "acceptance entrypoint mismatch for spec-entry-m1" \
+    "mismatch refusal did not name the task"
+  assert_contains "$out" "the brief says bin/other but proj registers 'bin/acceptance'" \
+    "mismatch refusal did not show both sides of the disagreement"
+  assert_absent "$home/state/spec-entry-m1.meta" "mismatched spec scout spawn wrote task metadata"
+
+  FM_HOME="$home" "$BRIEF" spec-entry-m2 proj --scout --spec --acceptance bin/acceptance >/dev/null 2>&1 \
+    || fail "a spec scout brief naming the registered entrypoint should scaffold"
+  fill_brief_subsections "$home/data/spec-entry-m2/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-m2 "$proj" claude --scout)
+  assert_not_contains "$out" "acceptance entrypoint mismatch" \
+    "a matching acceptance entrypoint was reported as a mismatch"
+
+  # A registry entry that escapes the project is a refusal, not an empty entrypoint,
+  # so the spawn stops even though the brief names a path.
+  rec=$(make_home spec-escape "- proj [direct-PR acceptance=../escape] - x (added 2026-10-12)")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  FM_HOME="$home" "$BRIEF" spec-entry-r1 proj --scout --spec --acceptance bin/acceptance >/dev/null 2>&1 \
+    || fail "a spec scout brief should scaffold against a refusing registry entry"
+  fill_brief_subsections "$home/data/spec-entry-r1/brief.md" \
+    "Pin the spec scenarios." "Write the Gherkin for the registered entrypoint."
+  out=$(run_spawn "$home" "$fakebin" spec-entry-r1 "$proj" claude --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a spec scout spawn against a refusing registry entry should exit non-zero"
+  assert_contains "$out" "spec-entry-r1 cannot launch" "a refusing registry entry did not stop the spawn"
+  assert_absent "$home/state/spec-entry-r1.meta" "a refused registry spawn wrote task metadata"
+  pass "fm-spawn: a spec scout's brief entrypoint must match the project's registered acceptance entrypoint"
 }
 
 # The registry is the captain's standing posture, so dropping below its rigor is
@@ -355,6 +405,11 @@ STUB
       "$mode: promoted worker did not receive the Captain's intent subsection"
     assert_grep "## Firstmate spec" "$payload" \
       "$mode: promoted worker did not receive the Firstmate spec subsection"
+    # A task without a spec_lock= carries no locked-spec contract in either output.
+    assert_no_grep "# Locked acceptance spec" "$payload" \
+      "$mode: a task without a spec lock received a locked-spec contract"
+    assert_no_grep "# Locked acceptance spec" "$home/data/$id/brief.md" \
+      "$mode: a task without a spec lock kept a locked-spec contract in its brief"
 
     # Both the delivered prompt and persisted relaunch brief are public outputs.
     for contract in "$payload" "$home/data/$id/brief.md"; do
@@ -409,6 +464,95 @@ STUB
   assert_no_grep "no-mistakes axi respond" "$TMP_ROOT/promote-dod/payload-promote-dod-direct-pr" \
     "promoted direct-PR worker received the pipeline gate contract"
   pass "fm-promote: a promoted worker receives the same mode-specific delivery contract a briefed one does"
+}
+
+# A spec scout whose brief names an acceptance entrypoint and whose archived
+# features are locked. Setup is the same scout path test_promotion_delivers_the_real_definition_of_done
+# takes, plus the lock: <home>/data/<id>/spec-lock.json locks the archived features
+# and the meta records it in spec_lock=.
+make_locked_spec_scout() {  # <home> <id>
+  local home=$1 id=$2 data meta
+  data="$home/data"
+  meta="$home/state/$id.meta"
+  mkdir -p "$home/state"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+  FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 \
+    || fail "spec scout brief generation should succeed"
+  fill_brief_subsections "$data/$id/brief.md" \
+    "Ship the locked spec contract." "Preserve the locked acceptance spec."
+  printf 'Acceptance entrypoint: bin/acceptance\n' >> "$data/$id/brief.md"
+  mkdir -p "$data/$id/spec/features"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$data/$id/spec/features/demo.feature"
+  fm_spec_build_lock "$data/$id/spec" "$id" c0ffee approval 1 > "$data/$id/spec-lock.json" \
+    || fail "the spec lock should build from the archived features"
+  printf 'spec_lock=%s\n' "$data/$id/spec-lock.json" >> "$meta"
+}
+
+test_promotion_appends_the_locked_spec_contract() {
+  local home data id meta out
+  home="$TMP_ROOT/promote-spec-locked/home"
+  data="$home/data"
+  id=promote-spec-locked
+  meta="$home/state/$id.meta"
+  make_locked_spec_scout "$home" "$id"
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1) \
+    || fail "promotion with a locked spec should succeed (got: $out)"
+  assert_grep "# Locked acceptance spec" "$data/$id/ship-instructions.md" "instructions carry the contract"
+  assert_grep "# Locked acceptance spec" "$data/$id/brief.md" "relaunch brief carries the contract"
+  assert_grep "fm-acceptance.sh run $id" "$data/$id/ship-instructions.md" "acceptance command"
+  assert_grep "through \`bin/acceptance\`" "$data/$id/ship-instructions.md" "contract names the brief's entrypoint"
+  assert_grep "spec_lock=$data/$id/spec-lock.json" "$meta" "promotion dropped the meta's spec lock"
+  assert_grep "Acceptance entrypoint: bin/acceptance" "$data/$id/brief.md" "promotion dropped the brief's acceptance entrypoint"
+  pass "promotion appends the locked-spec contract"
+}
+
+# A spec scout whose brief names an acceptance entrypoint but whose meta carries no
+# approved spec_lock= (no approval ever wrote one, or it was emptied) must not
+# promote into an ungated ship.
+test_promotion_refuses_an_unapproved_spec_scout() {
+  local home data id meta err code expected variant
+  for variant in absent empty; do
+    home="$TMP_ROOT/promote-spec-unapproved-$variant/home"
+    data="$home/data"
+    id="promote-spec-unapproved-$variant"
+    meta="$home/state/$id.meta"
+    expected="error: cannot promote $id: spec scout not approved; run bin/fm-spec.sh approve $id --decision-file <captain words>"
+    make_locked_spec_scout "$home" "$id"
+    if [ "$variant" = empty ]; then
+      printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nspec_lock=\n' "$id" > "$meta"
+    else
+      printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+    fi
+    code=0
+    # The supervision guard prints its own banner to stderr on every promotion,
+    # so the refusal must be one exact stderr line rather than the whole stream.
+    err=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1 >/dev/null) || code=$?
+    expect_code 1 "$code" "an unapproved spec scout ($variant spec_lock) is refused"
+    printf '%s\n' "$err" | grep -Fx -- "$expected" >/dev/null \
+      || fail "unapproved spec scout ($variant spec_lock) refusal line missing from stderr: $err"
+    assert_grep "kind=scout" "$meta" "meta unchanged on refusal ($variant spec_lock)"
+    assert_absent "$data/$id/ship-instructions.md" "a refused promotion rendered ship instructions ($variant spec_lock)"
+    assert_grep "Acceptance entrypoint: bin/acceptance" "$data/$id/brief.md" "a refused promotion changed the brief ($variant spec_lock)"
+  done
+  pass "promotion refuses an unapproved spec scout"
+}
+
+test_promotion_refuses_a_tampered_archive() {
+  local home data id meta out code
+  home="$TMP_ROOT/promote-spec-tamper/home"
+  data="$home/data"
+  id=promote-spec-tamper
+  meta="$home/state/$id.meta"
+  make_locked_spec_scout "$home" "$id"
+  printf 'x' >> "$data/$id/spec/features/demo.feature"
+  code=0
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1) || code=$?
+  expect_code 1 "$code" "a tampered archive is refused"
+  assert_contains "$out" "archived spec does not match the lock" "tamper refusal"
+  assert_grep "kind=scout" "$meta" "meta unchanged on refusal"
+  assert_absent "$data/$id/ship-instructions.md" "a refused promotion rendered ship instructions"
+  assert_no_grep "# Locked acceptance spec" "$data/$id/brief.md" "a refused promotion changed the brief"
+  pass "promotion refuses a tampered archive"
 }
 
 test_promotion_persists_the_selected_ship_branch() {
@@ -1697,14 +1841,61 @@ EOF
   pass "fm-project-mode: --branch-prefix resolves order-independently and defaults to the legacy fm/ prefix"
 }
 
+# The registry's acceptance= token names a project's acceptance entrypoint for
+# spec-gated work. --acceptance prints it (repo-relative, or empty), the token never
+# becomes the mode, and an absolute or ..-escaping path is refused with exit 3.
+test_project_mode_acceptance_token() {
+  local home out code
+  home="$TMP_ROOT/project-mode-acceptance/home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- shop [direct-PR acceptance=bin/acceptance branch=] - fixture (added 2026-10-12)
+- plain [direct-PR] - fixture (added 2026-10-12)
+- bad [direct-PR acceptance=../escape] - fixture (added 2026-10-12)
+- leading [acceptance=bin/leading direct-PR] - fixture (added 2026-10-12)
+- absolute [direct-PR acceptance=/abs/entry] - fixture (added 2026-10-12)
+- dotdot [direct-PR acceptance=..] - fixture (added 2026-10-12)
+EOF
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance shop 2>/dev/null)
+  [ "$out" = "bin/acceptance" ] || fail "--acceptance did not print the registered token (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" shop 2>/dev/null)
+  [ "$out" = "direct-PR off" ] || fail "the acceptance= token leaked into the mode/yolo output (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --branch-prefix shop 2>/dev/null)
+  [ "$out" = "" ] || fail "an empty branch= did not survive beside acceptance= (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance plain 2>/dev/null)
+  [ "$out" = "" ] || fail "a project with no acceptance= token did not print empty (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" leading 2>/dev/null)
+  [ "$out" = "direct-PR off" ] || fail "an acceptance= token before the mode became the mode (got '$out')"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance leading 2>/dev/null)
+  [ "$out" = "bin/leading" ] || fail "an acceptance= token before the mode did not print (got '$out')"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance bad >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "a path escaping the project is refused"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance absolute >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "an absolute acceptance path is refused"
+  code=0
+  FM_HOME="$home" "$PROJECT_MODE" --acceptance dotdot >/dev/null 2>&1 || code=$?
+  expect_code 3 "$code" "a bare .. acceptance path is refused"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --acceptance never-registered 2>/dev/null)
+  [ "$out" = "" ] || fail "an unregistered project did not print empty for --acceptance (got '$out')"
+  out=$(FM_HOME="$TMP_ROOT/project-mode-acceptance/no-registry-home" "$PROJECT_MODE" --acceptance shop 2>/dev/null)
+  [ "$out" = "" ] || fail "an absent registry did not print empty for --acceptance (got '$out')"
+  pass "fm-project-mode: --acceptance prints the registered entrypoint, empty when none, and refuses an escaping path"
+}
+
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
 test_spawn_refuses_a_brief_mode_mismatch
+test_spawn_refuses_a_spec_scout_entrypoint_mismatch
 test_spawn_notices_a_rigor_downgrade_against_the_registry
 test_scout_records_no_delivery_posture
 test_promote_requires_and_records_the_delivery_contract
 test_promote_refuses_a_symlinked_task_record
 test_promotion_delivers_the_real_definition_of_done
+test_promotion_appends_the_locked_spec_contract
+test_promotion_refuses_an_unapproved_spec_scout
+test_promotion_refuses_a_tampered_archive
 test_promotion_persists_the_selected_ship_branch
 test_promotion_branch_command_is_shell_safe
 test_local_merge_uses_the_recorded_ship_branch
@@ -1724,4 +1915,5 @@ test_promotion_carries_the_forge_binding
 test_forge_forgejo_rides_the_same_binding
 test_spawn_and_promote_require_filled_task_subsections
 test_project_mode_resolves_branch_prefix
+test_project_mode_acceptance_token
 echo "# all fm-task-delivery tests passed"

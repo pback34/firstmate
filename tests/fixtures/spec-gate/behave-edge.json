@@ -1,0 +1,156 @@
+[
+{
+  "description": "",
+  "elements": [
+    {
+      "description": "",
+      "id": "edge-cases;plain-passes",
+      "keyword": "Scenario",
+      "line": 3,
+      "location": "features/edge.feature:3",
+      "name": "plain passes",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 4,
+          "match": {
+            "location": "features/steps/steps.py:9"
+          },
+          "name": "a shop",
+          "result": {
+            "duration": 22411,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    },
+    {
+      "description": "",
+      "id": "edge-cases;excluded-by-tag-filter",
+      "keyword": "Scenario",
+      "line": 7,
+      "location": "features/edge.feature:7",
+      "name": "excluded by tag filter",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 8,
+          "name": "a shop",
+          "result": {
+            "duration": 0,
+            "status": "skipped"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        {
+          "line": 6,
+          "name": "@wip"
+        }
+      ],
+      "type": "scenario"
+    },
+    {
+      "description": "",
+      "id": "edge-cases;skipped-by-tag",
+      "keyword": "Scenario",
+      "line": 11,
+      "location": "features/edge.feature:11",
+      "name": "skipped by tag",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 12,
+          "name": "a shop",
+          "result": {
+            "duration": 0,
+            "status": "skipped"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        {
+          "line": 10,
+          "name": "@skip"
+        }
+      ],
+      "type": "scenario"
+    },
+    {
+      "description": "",
+      "id": "edge-cases;setup-hook-crashes",
+      "keyword": "Scenario",
+      "line": 15,
+      "location": "features/edge.feature:15",
+      "name": "setup hook crashes",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 16,
+          "name": "a shop",
+          "result": {
+            "duration": 0,
+            "status": "skipped"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        {
+          "line": 14,
+          "name": "@boom"
+        }
+      ],
+      "type": "scenario"
+    },
+    {
+      "description": "",
+      "id": "edge-cases;step-after-a-failure",
+      "keyword": "Scenario",
+      "line": 18,
+      "location": "features/edge.feature:18",
+      "name": "step after a failure",
+      "steps": [
+        {
+          "keyword": "Given",
+          "line": 19,
+          "match": {
+            "location": "features/steps/steps.py:14"
+          },
+          "name": "it fails",
+          "result": {
+            "duration": 27418,
+            "error_message": "ASSERT FAILED: boom",
+            "status": "failed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "And",
+          "line": 20,
+          "name": "a shop",
+          "result": {
+            "duration": 0,
+            "status": "skipped"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [],
+      "type": "scenario"
+    }
+  ],
+  "id": "edge-cases",
+  "keyword": "Feature",
+  "line": 1,
+  "name": "Edge cases",
+  "status": "error",
+  "tags": [],
+  "uri": "features/edge.feature"
+}
+]

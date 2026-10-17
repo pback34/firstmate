@@ -574,4 +574,75 @@ test_external_review_done_with_backup_needs_the_copy
 
 test_worker_role_names_skill_and_fallback_file
 
+spec_locked_task() {  # <name>; sets WT REPO META STATE_DIR LOCK
+  REPO="$TMP_ROOT/$1-repo"
+  WT="$TMP_ROOT/$1-wt"
+  STATE_DIR="$TMP_ROOT/$1-state"
+  local dir="$TMP_ROOT/$1-data"
+  fm_git_worktree "$REPO" "$WT" "fm/$1"
+  mkdir -p "$WT/features" "$dir/spec/features" "$STATE_DIR"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$WT/features/demo.feature"
+  cp "$ROOT/tests/fixtures/spec-gate/demo.feature" "$dir/spec/features/demo.feature"
+  git -C "$WT" add features
+  git -C "$WT" commit -q -m spec
+  git -C "$WT" push -q origin "fm/$1"
+  LOCK="$dir/spec-lock.json"
+  fm_spec_build_lock "$dir/spec" "$1" "$(git -C "$WT" rev-parse HEAD)" approval 1 > "$LOCK"
+  META="$STATE_DIR/$1.meta"
+  fm_write_meta "$META" "kind=ship" "mode=direct-PR" "worktree=$WT" "spec_lock=$LOCK"
+}
+
+passing_record() {
+  fm_spec_record_from_cucumber "$ROOT/tests/fixtures/spec-gate/cucumber-js-11.json" "$WT" "$(git -C "$WT" rev-parse HEAD)" bin/acceptance 0 1 \
+    | jq -c '.scenarios |= map(.status = "passed")' > "${LOCK%/*}/acceptance.json"
+}
+
+test_locked_done_is_refused_on_every_acceptance_path() {
+  local reason url
+  spec_locked_task lock1
+  reason=$(accept_done ship direct-PR "$WT" "$REPO" 'done: PR https://github.com/o/r/pull/1' "$STATE_DIR" lock1 "$META") \
+    && fail "reachable but unaccepted locked done must refuse"
+  assert_equals "acceptance run missing" "$reason" "reachability path"
+  url=https://github.com/o/r/pull/2
+  fm_write_meta "$META" "kind=ship" "mode=no-mistakes" "worktree=$WT" "spec_lock=$LOCK" "pr=$url" "pr_head=$(git -C "$WT" rev-parse HEAD)"
+  reason=$(accept_done ship no-mistakes "$WT" "$REPO" "done: PR $url checks green" "$STATE_DIR" lock1 "$META") \
+    && fail "recorded-PR fast path must not bypass the spec gate"
+  assert_equals "acceptance run missing" "$reason" "recorded-PR path"
+  reason=$(accept_done ship direct-PR "$WT" "$REPO" 'done: PR https://review.example/c/p/+/3 published for review' "$STATE_DIR" lock1 "$META") \
+    && fail "Gerrit path must not bypass the spec gate"
+  assert_equals "acceptance run missing" "$reason" "Gerrit path"
+  pass "a locked done is refused on every acceptance path"
+}
+
+test_locked_pre_validation_done_stays_ungated() {
+  spec_locked_task lock2
+  accept_done ship no-mistakes "$WT" "$REPO" 'done: implemented the scenarios' "$STATE_DIR" lock2 "$META" \
+    || fail "the no-mistakes pipeline handoff must stay ungated for a locked task"
+  pass "a locked pre-validation done stays ungated"
+}
+
+test_locked_done_passes_with_a_passing_record() {
+  spec_locked_task lock3
+  passing_record
+  accept_done ship direct-PR "$WT" "$REPO" 'done: PR https://github.com/o/r/pull/4' "$STATE_DIR" lock3 "$META" \
+    || fail "a passing record at a reachable head must be accepted"
+  pass "a locked done passes with a passing record"
+}
+
+test_present_but_empty_spec_lock_is_refused() {
+  local reason
+  spec_locked_task lock4
+  passing_record
+  fm_write_meta "$META" "kind=ship" "mode=direct-PR" "worktree=$WT" "spec_lock="
+  reason=$(accept_done ship direct-PR "$WT" "$REPO" 'done: PR https://github.com/o/r/pull/5' "$STATE_DIR" lock4 "$META") \
+    && fail "a present-but-empty spec_lock= must refuse, not skip the gate"
+  assert_equals "spec lock unreadable" "$reason" "empty spec_lock= reason"
+  pass "a present-but-empty spec_lock= is refused"
+}
+
+test_locked_done_is_refused_on_every_acceptance_path
+test_locked_pre_validation_done_stays_ungated
+test_locked_done_passes_with_a_passing_record
+test_present_but_empty_spec_lock_is_refused
+
 echo "all fm-dod-lib tests passed"
