@@ -1,0 +1,351 @@
+## Spec scout status (real Claude scout, sonnet)
+done [at=1792901489]: features/cart_total.feature committed (a36ee63, 2 scenarios incl. 3-row outline); report.md written
+
+$ bin/fm-captain-hold.sh hold nmspec01 --reason approve spec scenarios
+nmspec01
+[exit 0]
+
+$ bin/fm-spec.sh show nmspec01
+candidate scenarios (not approved):
+features/cart_total.feature:6  An empty cart totals 0
+features/cart_total.feature:20  A cart with items totals the sum of their prices
+features/cart_total.feature:21  A cart with items totals the sum of their prices
+features/cart_total.feature:22  A cart with items totals the sum of their prices
+[exit 0]
+
+## Adversarial: approve with dirty worktree
+$ (in scout worktree) add an uncommitted line to features/cart_total.feature
+$ bin/fm-spec.sh approve nmspec01 --decision-file $LABROOT/words
+error: uncommitted changes under features/ in $LABROOT/treehouse/.treehouse/shop-fde7d1/1/shop; the spec must be committed first
+[exit 1]
+
+(reverted the uncommitted edit)
+
+$ bin/fm-spec.sh approve nmspec01
+error: approve needs --decision-file <path> holding the captain's exact approval words
+[exit 1]
+
+## Approve with the captain's words
+$ bin/fm-spec.sh approve nmspec01 --decision-file $LABROOT/words
+released: nmspec01
+locked 4 scenarios in 1 files at a36ee637a438f272ca573b2226f98c4d797f9f6a: $LAB/data/nmspec01/spec-lock.json
+[exit 0]
+
+$ grep spec_lock state/nmspec01.meta
+spec_lock=$LAB/data/nmspec01/spec-lock.json
+
+$ jq . data/nmspec01/spec-lock.json
+{
+  "version": 1,
+  "task": "nmspec01",
+  "commit": "a36ee637a438f272ca573b2226f98c4d797f9f6a",
+  "approved_at": 1792901524,
+  "approval": "captain-hold:nmspec01 sha256:a51ad6459bb966a19f7ed0cb25253605f0f114f66573885852baee03d52d8d08",
+  "files": [
+    {
+      "path": "features/cart_total.feature",
+      "sha256": "2f33262a31f3823605887d19a8a34c8f3546d4d9e223f7d9bf3c23b97844ef5e"
+    }
+  ],
+  "scenarios": [
+    {
+      "uri": "features/cart_total.feature",
+      "line": 6,
+      "name": "An empty cart totals 0",
+      "steps": 3
+    },
+    {
+      "uri": "features/cart_total.feature",
+      "line": 20,
+      "name": "A cart with items totals the sum of their prices",
+      "steps": 5,
+      "outline_line": 11,
+      "ordinal": 1
+    },
+    {
+      "uri": "features/cart_total.feature",
+      "line": 21,
+      "name": "A cart with items totals the sum of their prices",
+      "steps": 5,
+      "outline_line": 11,
+      "ordinal": 2
+    },
+    {
+      "uri": "features/cart_total.feature",
+      "line": 22,
+      "name": "A cart with items totals the sum of their prices",
+      "steps": 5,
+      "outline_line": 11,
+      "ordinal": 3
+    }
+  ]
+}
+
+$ bin/fm-spec.sh show nmspec01
+locked scenarios (captain-hold:nmspec01 sha256:a51ad6459bb966a19f7ed0cb25253605f0f114f66573885852baee03d52d8d08):
+features/cart_total.feature:6  An empty cart totals 0
+features/cart_total.feature:20  A cart with items totals the sum of their prices
+features/cart_total.feature:21  A cart with items totals the sum of their prices
+features/cart_total.feature:22  A cart with items totals the sum of their prices
+[exit 0]
+
+## Adversarial: promotion with a tampered archive
+$ (tamper) append a scenario to $LAB/data/nmspec01/spec/features/cart_total.feature
+$ bin/fm-promote.sh nmspec01 --mode local-only --yolo on
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: cannot promote nmspec01: archived spec does not match the lock: features/cart_total.feature; re-approve with bin/fm-spec.sh approve nmspec01 --decision-file <captain words>
+[exit 1]
+
+## Promote (archive restored)
+$ bin/fm-promote.sh nmspec01 --mode local-only --yolo on
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+promoted nmspec01 to ship mode=local-only yolo=on (teardown protection restored)
+wrote ship instructions for mode=local-only: $LAB/data/nmspec01/ship-instructions.md
+next: FM_HOME=$LAB bin/fm-send.sh fm-nmspec01 "$(cat $LAB/data/nmspec01/ship-instructions.md)"
+[exit 0]
+
+$ grep -E '^(kind|mode|spec_lock)=' state/nmspec01.meta
+spec_lock=$LAB/data/nmspec01/spec-lock.json
+kind=ship
+mode=local-only
+
+## Deliver ship instructions to the live worker
+$ bin/fm-send.sh fm-nmspec01 "$(cat data/nmspec01/ship-instructions.md)"
+fm-gate-refuse: gate agent lifecycle permitted only against lab home $LAB
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[exit 0]
+
+## Real Claude ship worker result
+$ tail -1 state/nmspec01.status
+done [at=1792901581]: ready in branch fm/nmspec01
+$ git log --oneline (worker copy)
+d3eb888 Add Cart#total with acceptance steps and runner
+7fcef33 Add locked cart total acceptance spec
+912dff8 seed shop
+$ jq data/nmspec01/acceptance.json (written by the worker's own fm-acceptance.sh run)
+{"version":1,"head":"d3eb888446fc10b15f3ec0c25212b8ea739d02b4","ran_at":1792901577,"entrypoint":"bin/acceptance","exit":0,"counts":{"passed":4,"failed":0,"undefined":0,"pending":0,"skipped":0,"ambiguous":0,"unknown":0}}
+
+## Gated done, passing at the named head
+$ bin/fm-crew-state.sh nmspec01
+state: done · source: status-log · ready in branch fm/nmspec01
+[exit 0]
+
+## Adversarial 1: a worker weakens the locked spec (drops an Examples row) and commits
+$ git commit -am 'weaken spec'  (removed the 'pen | notebook' example row)
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · locked spec changed: features/cart_total.feature; needs captain re-approval
+[exit 0]
+
+$ bin/fm-acceptance.sh run nmspec01
+This Node.js version (v26.8.1) has not been tested with this version of Cucumber; it should work normally, but please raise an issue if you see anything unexpected.
+.............
+
+3 scenarios (3 passed)
+13 steps (13 passed)
+0m00.014s (executing steps: 0m00.001s)
+recorded 3 scenarios at 2877d0f9028b72367f94148fc4d94ec8768506c1 exit=0: passed=3
+[exit 0]
+
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · locked spec changed: features/cart_total.feature; needs captain re-approval
+[exit 0]
+
+usage: git revert [--[no-]edit] [-n] [-m <parent-number>] [-s] [-S[<keyid>]] <commit>...
+   or: git revert (--continue | --skip | --abort | --quit)
+
+    --quit                end revert or cherry-pick sequence
+    --continue            resume revert or cherry-pick sequence
+    --abort               cancel revert or cherry-pick sequence
+    --skip                skip current commit and continue
+    --[no-]cleanup <mode> how to strip spaces and #comments from message
+    -n, --no-commit       don't automatically commit
+    --commit              opposite of --no-commit
+    -e, --[no-]edit       edit the commit message
+    -s, --[no-]signoff    add a Signed-off-by trailer
+    -m, --[no-]mainline <parent-number>
+                          select mainline parent
+    --[no-]rerere-autoupdate
+                          update the index with reused conflict resolution if possible
+    --[no-]strategy <strategy>
+                          merge strategy
+    -X, --[no-]strategy-option <option>
+                          option for merge strategy
+    -S, --[no-]gpg-sign[=<key-id>]
+                          GPG sign commit
+    --[no-]reference      use the 'reference' format to refer to commits
+
+$ git revert HEAD  (locked file restored, new head)
+## Adversarial 2: the acceptance record names an older head
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · locked spec changed: features/cart_total.feature; needs captain re-approval
+[exit 0]
+
+## Adversarial 3: implementation regresses (total() ignores prices) and acceptance is rerun
+$ git commit -am 'regress total'  (total() now returns 0)
+$ bin/fm-acceptance.sh run nmspec01
+This Node.js version (v26.8.1) has not been tested with this version of Cucumber; it should work normally, but please raise an issue if you see anything unexpected.
+.......F....F
+
+Failures:
+
+1) Scenario: A cart with items totals the sum of their prices # features/cart_total.feature:20
+   ✔ Given an empty cart # features/step_definitions/cart_steps.js:5
+   ✔ And I add an item "apple" priced 2 # features/step_definitions/cart_steps.js:6
+   ✔ And I add an item "bread" priced 3 # features/step_definitions/cart_steps.js:6
+   ✔ When I ask for the cart total # features/step_definitions/cart_steps.js:7
+   ✖ Then the total is 5 # features/step_definitions/cart_steps.js:8
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       0 !== 5
+
+           + expected - actual
+
+           -0
+           +5
+
+           at World.<anonymous> ($LABROOT/treehouse/.treehouse/shop-fde7d1/1/shop/features/step_definitions/cart_steps.js:8:57)
+
+2) Scenario: A cart with items totals the sum of their prices # features/cart_total.feature:21
+   ✔ Given an empty cart # features/step_definitions/cart_steps.js:5
+   ✔ And I add an item "milk" priced 4 # features/step_definitions/cart_steps.js:6
+   ✔ And I add an item "cheese" priced 10 # features/step_definitions/cart_steps.js:6
+   ✔ When I ask for the cart total # features/step_definitions/cart_steps.js:7
+   ✖ Then the total is 14 # features/step_definitions/cart_steps.js:8
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       0 !== 14
+
+           + expected - actual
+
+           -0
+           +14
+
+           at World.<anonymous> ($LABROOT/treehouse/.treehouse/shop-fde7d1/1/shop/features/step_definitions/cart_steps.js:8:57)
+
+3 scenarios (2 failed, 1 passed)
+13 steps (2 failed, 11 passed)
+0m00.017s (executing steps: 0m00.002s)
+recorded 3 scenarios at 13ab3fa3d59c778e65e909d59f457244754b8ded exit=1: passed=1 failed=2
+[exit 1]
+
+$ jq -c '.counts' data/nmspec01/acceptance.json
+{"passed":1,"failed":2,"undefined":0,"pending":0,"skipped":0,"ambiguous":0,"unknown":0}
+
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · locked spec changed: features/cart_total.feature; needs captain re-approval
+[exit 0]
+
+## Adversarial 4: uncommitted change at acceptance time
+$ bin/fm-acceptance.sh run nmspec01
+error: $LABROOT/treehouse/.treehouse/shop-fde7d1/1/shop has uncommitted changes; commit before recording acceptance
+[exit 2]
+
+$ git commit -am 'fix total'
+## Recovery: rerun acceptance on the final head
+$ bin/fm-acceptance.sh run nmspec01
+This Node.js version (v26.8.1) has not been tested with this version of Cucumber; it should work normally, but please raise an issue if you see anything unexpected.
+.............
+
+3 scenarios (3 passed)
+13 steps (13 passed)
+0m00.016s (executing steps: 0m00.001s)
+recorded 3 scenarios at ec415b601b082f4006e62975538d21429817d9d7 exit=0: passed=3
+[exit 0]
+
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · locked spec changed: features/cart_total.feature; needs captain re-approval
+[exit 0]
+
+## NOTE: the 'git revert -q' above failed (invalid flag), so the weakened spec stayed committed and every later check correctly stayed blocked on it. Restoring the locked file properly now.
+$ cp $LAB/data/nmspec01/spec/features/cart_total.feature features/ && git commit -am 'restore locked spec'
+## Adversarial 2 (redo): acceptance record names an older head than the copy's HEAD
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · acceptance run is for ec415b601b082f4006e62975538d21429817d9d7, not head 7c79e2ed242aed04ef35007f092f23a475ac49b7; rerun fm-acceptance.sh as the last step
+[exit 0]
+## Adversarial 3 (redo): implementation regresses and acceptance is rerun
+$ git commit -am 'regress total'  (total() now returns 0)
+$ bin/fm-acceptance.sh run nmspec01
+.......F....F....F
+
+Failures:
+
+1) Scenario: A cart with items totals the sum of their prices # features/cart_total.feature:20
+   ✔ Given an empty cart # features/step_definitions/cart_steps.js:5
+   ✔ And I add an item "apple" priced 2 # features/step_definitions/cart_steps.js:6
+   ✔ And I add an item "bread" priced 3 # features/step_definitions/cart_steps.js:6
+   ✔ When I ask for the cart total # features/step_definitions/cart_steps.js:7
+   ✖ Then the total is 5 # features/step_definitions/cart_steps.js:8
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       0 !== 5
+
+           + expected - actual
+
+           -0
+           +5
+
+
+2) Scenario: A cart with items totals the sum of their prices # features/cart_total.feature:21
+   ✔ Given an empty cart # features/step_definitions/cart_steps.js:5
+   ✔ And I add an item "milk" priced 4 # features/step_definitions/cart_steps.js:6
+   ✔ And I add an item "cheese" priced 10 # features/step_definitions/cart_steps.js:6
+   ✔ When I ask for the cart total # features/step_definitions/cart_steps.js:7
+   ✖ Then the total is 14 # features/step_definitions/cart_steps.js:8
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       0 !== 14
+
+           + expected - actual
+
+           -0
+           +14
+
+
+3) Scenario: A cart with items totals the sum of their prices # features/cart_total.feature:22
+   ✔ Given an empty cart # features/step_definitions/cart_steps.js:5
+   ✔ And I add an item "pen" priced 1 # features/step_definitions/cart_steps.js:6
+   ✔ And I add an item "notebook" priced 6 # features/step_definitions/cart_steps.js:6
+   ✔ When I ask for the cart total # features/step_definitions/cart_steps.js:7
+   ✖ Then the total is 7 # features/step_definitions/cart_steps.js:8
+       AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+       0 !== 7
+
+           + expected - actual
+
+           -0
+           +7
+
+
+4 scenarios (3 failed, 1 passed)
+18 steps (3 failed, 15 passed)
+0m00.021s (executing steps: 0m00.003s)
+recorded 4 scenarios at 44ecdad6362df480e8d7c69aa893864d20184391 exit=1: passed=1 failed=3
+[exit 1]
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · acceptance entrypoint exited 1
+[exit 0]
+## Recovery: fix, commit, rerun acceptance on the final head
+$ git commit -am 'fix total'
+$ bin/fm-acceptance.sh run nmspec01
+..................
+
+4 scenarios (4 passed)
+18 steps (18 passed)
+0m00.014s (executing steps: 0m00.001s)
+recorded 4 scenarios at 9c88f61c5910f4b1ca9a1f7ff9de5925546ded77 exit=0: passed=4
+[exit 0]
+$ bin/fm-crew-state.sh nmspec01
+state: done · source: status-log · ready in branch fm/nmspec01
+[exit 0]
+## Adversarial 5: a commit after the final acceptance run
+$ git commit -am 'post-acceptance commit'
+$ bin/fm-crew-state.sh nmspec01
+state: blocked · source: status-log · acceptance run is for 9c88f61c5910f4b1ca9a1f7ff9de5925546ded77, not head ad6b209058270c75d96c344ab5e5e634b8211855; rerun fm-acceptance.sh as the last step
+[exit 0]

@@ -1,0 +1,34 @@
+## Herdr lab session fm-lab-absence2-63153-3557; task hx2 spawned with bin/fm-spawn.sh --backend herdr --harness claude
+worktree=$LABROOT/treehouse/.treehouse/proj-d8ab9e/1/proj
+harness=claude
+backend=herdr
+herdr_session=fm-lab-absence2-63153-3557
+herdr_pane_id=w1:p2
+spawned claude in the herdr pane: pid(s) 66291
+
+$ bin/fm-herdr-lab.sh run fm-lab-absence2-63153-3557 pane close w1:p2   (the endpoint and its claude disappear)
+[exit 0]
+pid 66291 gone
+
+## A separate real claude (pid 77363) is started with its cwd in the task worktree, outside any herdr pane (private tmux socket)
+$ readlink /proc/77363/cwd; cat /proc/77363/comm
+$LABROOT/treehouse/.treehouse/proj-d8ab9e/1/proj
+claude
+
+## exit with a live occupant: must refuse and name the pid
+$ bin/fm-control.sh hx2 exit
+error: task hx2's endpoint fm-lab-absence2-63153-3557:w1:p2 reads 'missing', but a live agent process (pid 77363, claude) still has its working directory in the task's worktree $LABROOT/treehouse/.treehouse/proj-d8ab9e/1/proj, so the endpoint is not gone; exit will not claim it stopped nor send lifecycle input to an address it cannot reach (stop that process first, or repair the seat's Herdr identity)
+[exit 1]
+
+## relaunch with a live occupant: must refuse too
+$ bin/fm-spawn.sh hx2 --relaunch
+error: task hx2's recorded endpoint fm-lab-absence2-63153-3557:w1:p2 reads 'missing', but a live agent process (pid 77363, claude) still has its working directory in the task's worktree $LABROOT/treehouse/.treehouse/proj-d8ab9e/1/proj, so the endpoint is not gone. Refusing to launch a second agent into a worktree an agent already owns
+[exit 1]
+
+## Control: stop the occupant; exit must now prove the endpoint gone
+pid 77363 gone
+
+$ bin/fm-control.sh hx2 exit
+endpoint-gone hx2 harness=claude backend=herdr endpoint=fm-lab-absence2-63153-3557:w1:p2 worktree=$LABROOT/treehouse/.treehouse/proj-d8ab9e/1/proj
+[exit 0]
+
